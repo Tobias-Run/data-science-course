@@ -106,6 +106,8 @@ def cmd_blender(args) -> int:
         cmd.append("--save-blend")
     if args.no_backdrop:
         cmd.append("--no-backdrop")
+    if args.depth:
+        cmd.append("--depth")
 
     # Separate process on purpose: Blender's memory is released before anything
     # else in the pipeline loads.
@@ -122,6 +124,14 @@ def cmd_blender(args) -> int:
             f"{s.get('scatter_instances', 0)} props, {s['world_size_m']:.0f} m across, "
             f"{len(s['renders'])} renders -> {run_dir / 'blender'}"
         )
+        if s.get("depth_maps"):
+            print(f"  depth maps: {len(s['depth_maps'])}")
+        # Surfaced here because the subprocess's stderr is only shown on failure,
+        # and a missing reference depth map must not pass unnoticed.
+        if s.get("depth_unavailable_for"):
+            print(f"  WARNING: no depth map produced for "
+                  f"{', '.join(s['depth_unavailable_for'])}; use the same depth "
+                  f"estimator on both images instead (see docs/depth-gate.md)")
     return 0
 
 
@@ -242,6 +252,8 @@ def main(argv=None) -> int:
         p.add_argument("--no-gltf", action="store_true")
         p.add_argument("--save-blend", action="store_true")
         p.add_argument("--no-backdrop", action="store_true")
+        p.add_argument("--depth", action="store_true",
+                       help="write a true depth map per render (M4 gate reference)")
 
     p = sub.add_parser("blender", help="height field -> .blend/glTF + diagnostic renders")
     add_blender_args(p)

@@ -4,7 +4,7 @@ Reimplementation of the pipeline described in Tencent Hunyuan, *"WorldClaw:
 Agentic 3D Open-World Generation at Scale"* (arXiv 2608.05248). The report ships
 no code; everything here is written from the paper's description.
 
-**Status: M1, M2 and M3 complete.** A layout map goes in, an explicit walkable,
+**Status: M1, M2 and M3 complete; M4's arithmetic is done and tested.** A layout map goes in, an explicit walkable,
 textured, populated terrain comes out — height field, region weights, splat
 maps, blended procedural material, scattered props with a measured contact rate,
 OBJ, 16-bit height map, glTF, and diagnostic renders from headless Blender. The schemas for the later stages are
@@ -16,7 +16,9 @@ Prompt q
   ├─ Stage 1  Intent + planning        -> SceneSpec, TerrainSpec, layout map   [M3 ✓]
   ├─ Stage 2  Global terrain           -> height field, weights, meshes,
   │                                        splat maps, scattered props        [M1 ✓ M2 ✓]
-  └─ Stage 3  Regional objects         -> PlacementRecord per object           [M4]
+  └─ Stage 3  Regional objects         -> PlacementRecord per object           [M4:
+                                           ray-pair placement ✓, depth gate ✓,
+                                           models pending]
 ```
 
 ## Planning from a prompt (M3)
@@ -285,6 +287,16 @@ several things the text leaves open. Incorporated here:
 Not recoverable from the figure: the §3.2 tolerances `[-ε⁻, +ε⁺]`, the contact
 threshold, and the operator formulations. Those need the full text (blocked from
 this environment's network) or remain our own choices.
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | Stage boundaries, caching, conventions, testing strategy |
+| [docs/placement.md](docs/placement.md) | Ray-pair object placement, paper section 3.2, in full |
+| [docs/depth-gate.md](docs/depth-gate.md) | Topography fidelity of the image edit, and its known limitation |
+| [docs/operators.md](docs/operators.md) | The four geomorphological operators, as we formulated them |
+| [docs/overview.html](docs/overview.html) | A readable single-page overview (German), also published as an artifact |
 
 ## Deviations from the paper
 

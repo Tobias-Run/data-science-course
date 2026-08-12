@@ -323,6 +323,83 @@ def add_backdrop(bpy, height_m: np.ndarray, cell_size_m: float, material, extent
     return ob
 
 
+def enable_depth_pass(bpy, out_dir: Path):
+    """Route the Z pass to an EXR file per render.
+
+    The gate in ``placement/depth_gate.py`` needs a *true* depth map for the
+    pre-edit render; only the edited image has to make do with an estimator.
+    Rendering it here rather than estimating both sides removes half the
+    uncertainty from the sharpest metric in the acceptance criteria.
+    """
+    scene = bpy.context.scene
+    scene.view_layers[0].use_pass_z = True
+    scene.use_nodes = True
+    # Blender 5 moved the compositor from scene.node_tree to a node group;
+    # 4.x still exposes the old attribute, so both are accepted.
+    tree = getattr(scene, "node_tree", None)
+    if tree is None:
+        tree = scene.compositing_node_group
+        if tree is None:
+            tree = bpy.data.node_groups.new("compositor", "CompositorNodeTree")
+            scene.compositing_node_group = tree
+    for node in list(tree.nodes):
+        tree.nodes.remove(node)
+
+    rl = tree.nodes.new("CompositorNodeRLayers")
+    # Blender 5 dropped CompositorNodeComposite in favour of the node group's
+    # own output; 4.x still has it. Either way the colour image must keep a path
+    # to the output, or enabling the depth pass silently blanks every render.
+    if hasattr(bpy.types, "CompositorNodeComposite"):
+        comp = tree.nodes.new("CompositorNodeComposite")
+        tree.links.new(rl.outputs["Image"], comp.inputs["Image"])
+    else:
+        if not tree.interface.items_tree:
+            tree.interface.new_socket("Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+        group_out = tree.nodes.new("NodeGroupOutput")
+        tree.links.new(rl.outputs["Image"], group_out.inputs[0])
+
+    out = tree.nodes.new("CompositorNodeOutputFile")
+    # Blender 5's file-output node only offers the multilayer EXR variant, and
+    # the RNA enum still advertises both, so this is decided by trying.
+    try:
+        out.format.file_format = "OPEN_EXR"
+    except TypeError:
+        out.format.file_format = "OPEN_EXR_MULTILAYER"
+    out.format.color_depth = "32"
+    if hasattr(out, "file_slots"):  # Blender 4.x
+        out.base_path = str(out_dir)
+        out.file_slots.clear()
+        out.file_slots.new("depth")
+    else:  # Blender 5.x: named items, directory taken from scene.render.filepath
+        out.file_output_items.new("FLOAT", "depth")
+    tree.links.new(rl.outputs["Depth"], out.inputs["depth"])
+    return out
+
+
+def set_depth_output_name(node, name: str) -> None:
+    """Name the depth file for the camera currently being rendered."""
+    if hasattr(node, "file_slots"):
+        node.file_slots[0].path = f"{name}_"
+    else:
+        node.file_name = f"{name}_depth"
+
+
+def read_exr_depth(bpy, path: Path, res_x: int, res_y: int) -> np.ndarray:
+    """Load an EXR depth file through Blender and return it as a numpy array.
+
+    Blender is already loaded, so it is also the EXR reader -- no extra
+    dependency for a format that would otherwise need one.  Blender images are
+    stored bottom-up, hence the flip.
+    """
+    img = bpy.data.images.load(str(path))
+    try:
+        buf = np.array(img.pixels[:], dtype=np.float32)
+        depth = buf.reshape(res_y, res_x, 4)[..., 0]
+        return np.flipud(depth).copy()
+    finally:
+        bpy.data.images.remove(img)
+
+
 def add_sky(bpy, strength: float = 0.15):
     """A physical sky, not a black void.
 
@@ -357,6 +434,8 @@ def main(argv=None) -> int:
     ap.add_argument("--splat", help="terrain/splat.json; enables the blended material")
     ap.add_argument("--scatter", help="terrain/scatter.json; instances the props")
     ap.add_argument("--spec", help="terrain spec, for per-region material colours")
+    ap.add_argument("--depth", action="store_true",
+                    help="also write a true depth map per render (the M4 gate's reference)")
     ap.add_argument("--no-backdrop", action="store_true",
                     help="omit the horizon plane; the tile edge then shows bare sky")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
@@ -446,14 +525,30 @@ def main(argv=None) -> int:
     intrinsics = [camera_intrinsics(bpy, c, args.render_width, args.render_height) for c in cams]
     (out / "cameras.json").write_text(json.dumps(intrinsics, indent=2))
 
-    rendered = []
+    depth_node = enable_depth_pass(bpy, out / "_depth_tmp") if args.depth else None
+    rendered, depth_maps, depth_warnings = [], [], []
     if args.render:
         for cam in cams:
             scene.camera = cam
             path = out / f"render_{cam.name}.png"
             scene.render.filepath = str(path)
+            if depth_node is not None:
+                set_depth_output_name(depth_node, cam.name)
             bpy.ops.render.render(write_still=True)
             rendered.append(str(path))
+
+            if depth_node is not None:
+                exrs = sorted(out.glob(f"{cam.name}_*.exr")) + \
+                       sorted((out / "_depth_tmp").glob(f"{cam.name}_*.exr"))
+                if exrs:
+                    npy = out / f"depth_{cam.name}.npy"
+                    np.save(npy, read_exr_depth(bpy, exrs[-1], args.render_width,
+                                                args.render_height))
+                    depth_maps.append(str(npy))
+                    for f in exrs:
+                        f.unlink()
+                else:
+                    depth_warnings.append(cam.name)
 
     if args.export_gltf:
         bpy.ops.export_scene.gltf(filepath=str(out / f"{args.name}.glb"), export_format="GLB")
@@ -467,9 +562,21 @@ def main(argv=None) -> int:
         "height_max_m": hmax,
         "cell_size_m": cell,
         "renders": rendered,
+        "depth_maps": depth_maps,
+        "depth_unavailable_for": depth_warnings,
         "scatter_instances": scatter_count,
         "blender": bpy.app.version_string,
     }
+    if depth_warnings:
+        # Loud, because a silently missing reference map would leave the M4
+        # gate comparing an estimate against nothing and calling it a pass.
+        print(
+            f"WARNING: no depth file was produced for {depth_warnings}. "
+            "Blender's compositor file output is in flux across versions; the "
+            "gate's supported path is running the same depth estimator on the "
+            "before and after images, where the estimator's bias cancels.",
+            file=sys.stderr,
+        )
     (out / "blender_summary.json").write_text(json.dumps(summary, indent=2))
     print(json.dumps(summary, indent=2))
     return 0

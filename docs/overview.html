@@ -1,0 +1,565 @@
+<title>WorldClaw Nachbau</title>
+<style>
+  /* ── Palette taken from the project's own layout-map categories: the
+     documentation is coloured in the terrain colours it documents. ───────── */
+  :root {
+    --ground:      #F1F4F2;
+    --surface:     #FFFFFF;
+    --surface-alt: #E7ECE9;
+    --ink:         #17201D;
+    --ink-soft:    #4C5A55;
+    --ink-faint:   #78867F;
+    --rule:        #D2DBD6;
+    --accent:      #21786C;   /* basin  #2f9e8f, darkened for text contrast */
+    --accent-soft: #D9EBE6;
+    --warm:        #8C5E3C;   /* slope  #a2704a */
+    --warm-soft:   #F0E3D8;
+    --done:        #21786C;
+    --pending:     #8C5E3C;
+    --shadow:      0 1px 2px rgba(23,32,29,.06), 0 8px 24px rgba(23,32,29,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:      #101614;
+      --surface:     #182220;
+      --surface-alt: #202B28;
+      --ink:         #E3EAE7;
+      --ink-soft:    #A8B7B1;
+      --ink-faint:   #7C8B85;
+      --rule:        #2C3835;
+      --accent:      #4FC0AE;
+      --accent-soft: #1B322E;
+      --warm:        #C79366;
+      --warm-soft:   #2E251C;
+      --done:        #4FC0AE;
+      --pending:     #C79366;
+      --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:      #101614;
+    --surface:     #182220;
+    --surface-alt: #202B28;
+    --ink:         #E3EAE7;
+    --ink-soft:    #A8B7B1;
+    --ink-faint:   #7C8B85;
+    --rule:        #2C3835;
+    --accent:      #4FC0AE;
+    --accent-soft: #1B322E;
+    --warm:        #C79366;
+    --warm-soft:   #2E251C;
+    --done:        #4FC0AE;
+    --pending:     #C79366;
+    --shadow:      0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .wrap {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 5rem;
+  }
+
+  /* ── Masthead ─────────────────────────────────────────────────────────── */
+  header { display: flex; flex-direction: column; gap: .9rem; }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .69rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  h1 {
+    font-size: clamp(2rem, 7vw, 2.9rem);
+    line-height: 1.08;
+    letter-spacing: -.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 1.08rem;
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 34rem;
+  }
+
+  /* ── Terrain-profile rule: an elevation cross-section, not a plain line ── */
+  .profile { display: block; width: 100%; height: 22px; color: var(--rule); margin: 2.6rem 0 0; }
+  .profile polyline { fill: none; stroke: currentColor; stroke-width: 1.25; }
+
+  /* ── Sections ─────────────────────────────────────────────────────────── */
+  section { margin-top: 2.6rem; }
+  .sec-head { display: flex; align-items: baseline; gap: .7rem; flex-wrap: wrap; }
+  .tag {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .66rem;
+    letter-spacing: .1em;
+    padding: .2rem .45rem;
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+  h2 {
+    font-size: clamp(1.35rem, 4.6vw, 1.72rem);
+    line-height: 1.22;
+    letter-spacing: -.012em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  h3 {
+    font-size: 1.06rem;
+    margin: 1.9rem 0 .5rem;
+    letter-spacing: -.005em;
+  }
+  p { margin: .85rem 0; }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+  strong { font-weight: 700; }
+  code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .87em;
+    background: var(--surface-alt);
+    padding: .1em .32em;
+    border-radius: 3px;
+  }
+
+  /* ── Milestone status board ───────────────────────────────────────────── */
+  .board { display: grid; gap: .55rem; margin-top: 1.3rem; }
+  .row {
+    display: grid;
+    grid-template-columns: 3.1rem 1fr auto;
+    gap: .8rem;
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: .7rem .85rem;
+    box-shadow: var(--shadow);
+  }
+  .row .m {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .8rem;
+    font-weight: 700;
+    color: var(--ink-faint);
+  }
+  .row .what { font-size: .95rem; line-height: 1.4; }
+  .pill {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .64rem;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    padding: .22rem .5rem;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+  .pill.done    { background: var(--accent-soft); color: var(--done); }
+  .pill.partial { background: var(--warm-soft);   color: var(--pending); }
+  .pill.open    { background: var(--surface-alt);  color: var(--ink-faint); }
+
+  /* ── Figures ──────────────────────────────────────────────────────────── */
+  figure {
+    margin: 1.6rem 0;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 7px;
+    padding: 1.1rem .9rem .8rem;
+    overflow-x: auto;
+  }
+  figure svg { display: block; width: 100%; height: auto; min-width: 300px; }
+  figcaption {
+    font-size: .82rem;
+    color: var(--ink-soft);
+    margin-top: .8rem;
+    line-height: 1.5;
+  }
+  .svg-ink    { fill: var(--ink); }
+  .svg-soft   { fill: var(--ink-soft); }
+  .svg-faint  { fill: var(--ink-faint); }
+  .svg-accent { fill: var(--accent); }
+  .svg-warm   { fill: var(--warm); }
+  .s-rule   { stroke: var(--rule);   fill: none; stroke-width: 1.2; }
+  .s-ink    { stroke: var(--ink);    fill: none; stroke-width: 1.4; }
+  .s-accent { stroke: var(--accent); fill: none; stroke-width: 1.6; }
+  .s-warm   { stroke: var(--warm);   fill: none; stroke-width: 1.6; }
+  .f-surface{ fill: var(--surface-alt); }
+  .lbl {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px;
+    letter-spacing: .02em;
+  }
+
+  /* ── Formula block ────────────────────────────────────────────────────── */
+  .formula {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .86rem;
+    line-height: 1.75;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--accent);
+    border-radius: 5px;
+    padding: .85rem 1rem;
+    margin: 1.2rem 0;
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  /* ── Finding cards ────────────────────────────────────────────────────── */
+  .finds { display: grid; gap: .7rem; margin-top: 1.2rem; }
+  .find {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: .9rem 1rem;
+    box-shadow: var(--shadow);
+  }
+  .find h4 {
+    margin: 0 0 .35rem;
+    font-size: .98rem;
+    letter-spacing: -.005em;
+  }
+  .find p { margin: 0; font-size: .93rem; color: var(--ink-soft); line-height: 1.55; }
+  .find .sig {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .66rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: .3rem;
+  }
+
+  /* ── Callout ──────────────────────────────────────────────────────────── */
+  .note {
+    border-left: 3px solid var(--warm);
+    background: var(--warm-soft);
+    border-radius: 0 5px 5px 0;
+    padding: .85rem 1rem;
+    margin: 1.3rem 0;
+    font-size: .95rem;
+  }
+  .note p { margin: 0; }
+  .note p + p { margin-top: .6rem; }
+
+  /* ── Numbers strip ────────────────────────────────────────────────────── */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+    gap: .6rem;
+    margin-top: 1.2rem;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: .75rem .8rem;
+  }
+  .stat b {
+    display: block;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 1.3rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    letter-spacing: -.02em;
+  }
+  .stat span { font-size: .78rem; color: var(--ink-soft); line-height: 1.35; display: block; margin-top: .15rem; }
+
+  /* ── Where it runs ────────────────────────────────────────────────────── */
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; margin-top: 1rem; }
+  th, td { text-align: left; padding: .55rem .6rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .68rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 400;
+  }
+  .tblwrap { overflow-x: auto; }
+
+  ul { padding-left: 1.15rem; margin: .85rem 0; }
+  li { margin: .35rem 0; }
+
+  footer {
+    margin-top: 3.2rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    font-size: .85rem;
+    color: var(--ink-faint);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    a { transition: color .15s ease; }
+  }
+</style>
+
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">Nachbau · arXiv 2608.05248 · Stand 12. August 2026</span>
+  <h1>WorldClaw Nachbau</h1>
+  <p class="standfirst">Ein Satz Text wird zu einer begehbaren 3D-Landschaft. Drei von fünf Stufen laufen, die vierte ist rechnerisch fertig.</p>
+</header>
+
+<svg class="profile" viewBox="0 0 700 22" preserveAspectRatio="none" aria-hidden="true">
+  <polyline points="0,17 40,15 78,9 105,12 140,4 175,11 210,10 248,16 280,19 300,20 330,19 362,13 395,15 430,7 466,12 500,10 540,16 578,14 615,18 652,16 700,19"/>
+</svg>
+
+<section>
+  <div class="sec-head"><span class="tag">STAND</span><h2>Wo das Projekt steht</h2></div>
+  <p>Das Paper von Tencent Hunyuan beschreibt eine Pipeline, veröffentlicht aber keinen Code — das offizielle Repository enthält bis heute nur eine README und zwei Bilder. Alles hier ist Neuimplementierung aus der Papierbeschreibung.</p>
+
+  <div class="board">
+    <div class="row"><span class="m">M1</span><span class="what">Gelände aus einer Farbkarte: Höhenfeld, Mesh, Blender</span><span class="pill done">fertig</span></div>
+    <div class="row"><span class="m">M2</span><span class="what">Oberflächen und Bewuchs: Splat-Maps, Streuung, Bodenkontakt</span><span class="pill done">fertig</span></div>
+    <div class="row"><span class="m">M3</span><span class="what">Planung aus Text: lokales Sprachmodell, lokales Bildmodell</span><span class="pill done">fertig</span></div>
+    <div class="row"><span class="m">M4</span><span class="what">Objekte in Regionen: Platzierungsmathematik und Tiefen-Gate stehen, Modelle fehlen</span><span class="pill partial">Mathe fertig</span></div>
+    <div class="row"><span class="m">M5</span><span class="what">Verfeinerungsschleifen und Unreal-Export</span><span class="pill open">offen</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="tag">AUFBAU</span><h2>Drei Stufen, nur Dateien dazwischen</h2></div>
+  <p>Die Stufen reden ausschließlich über Dateien miteinander, nie über gemeinsamen Speicher. Das ist keine Ordnungsliebe, sondern die VRAM-Strategie: die großen Modelle dürfen nie gleichzeitig im Grafikspeicher liegen.</p>
+
+  <figure>
+    <svg viewBox="0 0 660 232" role="img" aria-label="Diagramm der drei Pipeline-Stufen und der Dateien, die sie austauschen">
+      <!-- stage 1 -->
+      <rect x="8" y="30" width="196" height="66" rx="6" class="s-rule f-surface"/>
+      <text x="20" y="52" class="lbl svg-accent">STUFE 1 · PLANUNG</text>
+      <text x="20" y="70" class="lbl svg-ink">Absicht extrahieren</text>
+      <text x="20" y="86" class="lbl svg-ink">Lücken planen</text>
+      <!-- stage 2 -->
+      <rect x="232" y="30" width="196" height="66" rx="6" class="s-rule f-surface"/>
+      <text x="244" y="52" class="lbl svg-accent">STUFE 2 · GELÄNDE</text>
+      <text x="244" y="70" class="lbl svg-ink">Masken, Höhenfeld</text>
+      <text x="244" y="86" class="lbl svg-ink">Material, Bewuchs</text>
+      <!-- stage 3 -->
+      <rect x="456" y="30" width="196" height="66" rx="6" class="s-rule f-surface"/>
+      <text x="468" y="52" class="lbl svg-warm">STUFE 3 · OBJEKTE</text>
+      <text x="468" y="70" class="lbl svg-ink">Edit, Segmentierung</text>
+      <text x="468" y="86" class="lbl svg-ink">Rekonstruktion, Platzierung</text>
+
+      <!-- arrows -->
+      <path d="M204 63 L232 63" class="s-ink" marker-end="url(#ah)"/>
+      <path d="M428 63 L456 63" class="s-ink" marker-end="url(#ah)"/>
+      <defs>
+        <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" class="svg-ink"/>
+        </marker>
+      </defs>
+
+      <text x="8" y="8" class="lbl svg-faint">EIN SATZ TEXT</text>
+
+      <!-- artifacts row -->
+      <line x1="8" y1="126" x2="652" y2="126" class="s-rule"/>
+      <text x="8" y="146" class="lbl svg-faint">ARTEFAKTE AUF PLATTE — jede Stufe einzeln prüfbar, zwischenspeicherbar, wiederaufsetzbar</text>
+
+      <rect x="8" y="158" width="196" height="58" rx="5" class="s-rule"/>
+      <text x="20" y="177" class="lbl svg-soft">terrain_spec.json</text>
+      <text x="20" y="193" class="lbl svg-soft">layout.png</text>
+      <text x="20" y="209" class="lbl svg-soft">intent.json</text>
+
+      <rect x="232" y="158" width="196" height="58" rx="5" class="s-rule"/>
+      <text x="244" y="177" class="lbl svg-soft">heightfield.npz</text>
+      <text x="244" y="193" class="lbl svg-soft">weights.npz · splat_0.png</text>
+      <text x="244" y="209" class="lbl svg-soft">scatter.json · cameras.json</text>
+
+      <rect x="456" y="158" width="196" height="58" rx="5" class="s-rule"/>
+      <text x="468" y="177" class="lbl svg-soft">placement records</text>
+      <text x="468" y="193" class="lbl svg-soft">object meshes</text>
+      <text x="468" y="209" class="lbl svg-soft">depth report</text>
+    </svg>
+    <figcaption>Jede Stufe schreibt ihre Zwischenergebnisse auf Platte und wird über einen Fingerabdruck ihrer Eingaben zwischengespeichert. Ein erneuter Lauf rechnet nur nach, was die Änderung berührt hat.</figcaption>
+  </figure>
+</section>
+
+<svg class="profile" viewBox="0 0 700 22" preserveAspectRatio="none" aria-hidden="true">
+  <polyline points="0,18 45,16 88,12 120,17 160,8 200,13 235,6 270,14 310,17 345,11 380,15 420,9 455,14 495,18 530,13 570,16 610,10 650,15 700,17"/>
+</svg>
+
+<section>
+  <div class="sec-head"><span class="tag">§ 3.1</span><h2>Das Höhenfeld</h2></div>
+  <p>Die Layout-Karte ist eine Bitmap, in der Farben Geländekategorien kodieren. Daraus werden Masken extrahiert, an den Rändern weichgezeichnet und zu Gewichten normalisiert, die überall die Summe 1 ergeben.</p>
+
+  <div class="formula">H(x) = Σ_r  m̃_r(x) · [ h_r + Σ_k w_rk·N_rk(x) + Σ_j α_rj·G_rj(x) ]</div>
+
+  <p>Diese Normalisierung ist der Grund, warum das Gelände an Regionsgrenzen nicht springt: die Summe ist eine konvexe Kombination der Regionsprofile, keine Addition mit Stufe. Geprüft wird das, nicht angenommen.</p>
+
+  <p><strong>Eine Maskenberechnung, drei Abnehmer.</strong> Dieselben Gewichte steuern Höhenfeld, Materialmischung und Streudichte. Sie liegen in einer Datei und werden nirgends neu gerechnet.</p>
+
+  <h3>Die vier Operatoren</h3>
+  <p>Das Paper <em>benennt</em> Gipfel, Düne, Terrasse und Erosion, formuliert sie aber nicht aus. Die Formulierungen hier sind eigene — eine bewusst akzeptierte Abweichung. Jeder Operator liefert ein <em>Delta</em>, skaliert mit α. Dadurch passen rein verändernde Operatoren wie Terrasse und Erosion in dieselbe additive Summe wie erzeugende, und α&nbsp;=&nbsp;0 ist immer wirkungslos.</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="tag">§ 3.2</span><h2>Platzierung über ein Strahlpaar</h2></div>
+  <p>Der rechnerisch heikelste Teil. Aus der Rekonstruktion kommt ein Mesh in <em>irgendeinem</em> Kamerabezug bei <em>irgendeiner</em> Skala. Nichts daran sagt, wo in der Welt das Objekt hingehört oder wie groß es ist. Alles Nötige ist aber bekannt: die Kamera des Renders, das Gelände und das Pixel, das das Objekt einnimmt.</p>
+
+  <figure>
+    <svg viewBox="0 0 660 300" role="img" aria-label="Diagramm der Strahlpaar-Platzierung mit Geländekamera, Objektkamera und dem Ankerpunkt auf dem Gelände">
+      <!-- terrain profile -->
+      <path d="M40 250 C 120 244, 170 262, 230 256 S 340 214, 400 224 S 520 250, 620 240"
+            class="s-ink"/>
+      <text x="40" y="272" class="lbl svg-faint">GELÄNDE — Höhenfeld H(x)</text>
+
+      <!-- terrain camera -->
+      <g>
+        <path d="M52 66 l30 -13 v26 z" class="svg-ink"/>
+        <rect x="20" y="52" width="34" height="28" rx="3" class="s-ink"/>
+        <text x="20" y="42" class="lbl svg-ink">Geländekamera  K_t, E_t</text>
+      </g>
+
+      <!-- composition image plane -->
+      <line x1="150" y1="40" x2="150" y2="150" class="s-rule"/>
+      <text x="120" y="34" class="lbl svg-faint">Kompositionsbild</text>
+      <rect x="141" y="92" width="18" height="18" rx="2" class="s-warm"/>
+      <text x="164" y="106" class="lbl svg-warm">Zuschnitt A_i</text>
+
+      <!-- ray 2: terrain camera through crop centre to terrain -->
+      <path d="M82 66 L 150 101 L 396 226" class="s-accent" stroke-dasharray="0"/>
+      <circle cx="396" cy="226" r="5" class="svg-accent"/>
+      <text x="404" y="222" class="lbl svg-accent">Anker P_t, Tiefe Z_t</text>
+      <text x="196" y="150" class="lbl svg-accent">Strahl 2 — durchs Zuschnittzentrum aufs Gelände</text>
+
+      <!-- object camera + mesh -->
+      <g>
+        <rect x="470" y="52" width="34" height="28" rx="3" class="s-warm"/>
+        <path d="M470 66 l-30 -13 v26 z" class="svg-warm"/>
+        <text x="418" y="42" class="lbl svg-warm">Objektkamera  f_o</text>
+      </g>
+      <path d="M556 120 l34 0 l0 -34 l-34 0 z" class="s-rule f-surface"/>
+      <path d="M556 120 l14 -12 l34 0 l-14 12 z" class="s-rule f-surface"/>
+      <path d="M590 120 l14 -12 l0 -34 l-14 12 z" class="s-rule f-surface"/>
+      <text x="548" y="140" class="lbl svg-faint">rekonstruiertes Mesh</text>
+
+      <!-- ray 1 -->
+      <path d="M440 66 L 566 100" class="s-warm"/>
+      <circle cx="566" cy="100" r="4.5" class="svg-warm"/>
+      <text x="452" y="88" class="lbl svg-warm">Strahl 1 → P_o, Z_o</text>
+
+      <!-- transform arrow -->
+      <path d="M540 168 C 500 210, 450 220, 408 226" class="s-rule" stroke-dasharray="4 4" marker-end="url(#ah2)"/>
+      <defs>
+        <marker id="ah2" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" class="svg-faint"/>
+        </marker>
+      </defs>
+      <text x="474" y="184" class="lbl svg-faint">T_place setzt P_o auf P_t</text>
+    </svg>
+    <figcaption>Ein Strahl trifft das rekonstruierte Mesh und liefert einen Referenzpunkt samt Tiefe. Der zweite geht von der Geländekamera durch dasselbe Pixel und trifft das Gelände. Aus beiden Tiefen und beiden Brennweiten ergibt sich die Skala.</figcaption>
+  </figure>
+
+  <div class="formula">s_i = (Z_t / Z_o) · (f_o / f̂_i)</div>
+
+  <p>Die Skala sorgt dafür, dass das Objekt von der Geländekamera aus denselben Winkel einnimmt wie in seiner eigenen Rekonstruktion. Der Zuschnitt schlägt sich dabei nur in der Intrinsik nieder — <code>K̂_i = A_i · K_t</code> —, denn Zuschneiden und Vergrößern verschieben das <em>Bildkoordinatensystem</em>, nicht die Kamera. Deshalb kostet hohe Rekonstruktionsauflösung keine Platzierungsgenauigkeit.</p>
+
+  <div class="note">
+    <p><strong>Die Doppeltransformations-Falle.</strong> <code>T_place</code> endet auf <code>· T_l2c</code>. Ist diese Transformation bereits in die exportierten Vertices eingebacken, verdoppelt eine erneute Anwendung Rotation und Verschiebung — lautlos.</p>
+    <p>Der Code rät hier nicht: wird ihm gesagt, die Transformation sei nicht eingebacken, aber keine Matrix übergeben, bricht er ab.</p>
+  </div>
+
+  <h3>Kontaktsuche</h3>
+  <p>Gegen Reste von Schweben werden Ankertiefe und Skala <em>gemeinsam</em> entlang des Geländestrahls variiert. Verschiebt man den Anker auf Tiefe <code>k·Z_t</code> und skaliert mit demselben <code>k</code>, bleibt die Projektion identisch — das Objekt sieht weiterhin exakt so aus wie komponiert, während sich sein Bodenkontakt ändert. Diese Invarianz ist der Grund, warum die Suche visuell nichts kostet, und sie ist per Test abgesichert.</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="tag">§ 5</span><h2>Das Tiefen-Gate</h2></div>
+  <p>Das größte Risiko im Projekt: Wenn das Bildmodell beim Einfügen von Objekten heimlich einen Grat verschiebt oder den Bildausschnitt verändert, landet jeder zurückgerechnete Strahl woanders. Die Platzierungen sind falsch, und <em>nichts</em> weiter unten merkt es — das bearbeitete Bild sieht schließlich gut aus.</p>
+
+  <h3>Die Asymmetrie, die es möglich macht</h3>
+  <p>Ein eingefügtes Objekt kann die Oberfläche nur <em>näher</em> an die Kamera bringen. Es verdeckt Gelände, es kann nichts dahinter freilegen.</p>
+  <p>Also ist abnehmende Tiefe erlaubt, <strong>zunehmende Tiefe bedeutet, dass sich das Gelände bewegt hat</strong>. Dieser einseitige Test trennt zulässige von kaputten Edits, ohne wissen zu müssen, wo die Objekte gelandet sind.</p>
+
+  <div class="note">
+    <p><strong>Bekannte Grenze, bewusst dokumentiert.</strong> Eine reine Kamerafahrt entlang der Blickachse verschiebt jede Tiefe um denselben Betrag — und genau das gleicht die Ausrichtung von geschätzten Tiefenkarten aus. Das Gate <em>kann</em> das nicht sehen.</p>
+    <p>Es deckt Geländeverformung und jede Umrahmung ab, die die Tiefen<em>struktur</em> ändert. Die reine Kamerafahrt muss auf der Prompt-Seite verhindert werden. Ein Test hält diese Lücke fest, damit sie dokumentiert bleibt statt später zu überraschen.</p>
+  </div>
+</section>
+
+<svg class="profile" viewBox="0 0 700 22" preserveAspectRatio="none" aria-hidden="true">
+  <polyline points="0,16 38,18 75,11 112,14 148,6 188,12 222,16 260,9 298,13 335,18 372,12 410,15 448,7 486,13 522,17 560,11 600,14 640,17 700,15"/>
+</svg>
+
+<section>
+  <div class="sec-head"><span class="tag">FUNDE</span><h2>Was beim Bauen auffiel</h2></div>
+  <p>Die Fehler, die etwas über das Problem verraten — nicht die Tippfehler.</p>
+
+  <div class="finds">
+    <div class="find">
+      <span class="sig">M2 · Kontaktrate 84 % → 99,7 %</span>
+      <h4>Gegen die falsche Ebene gemessen</h4>
+      <p>Die Kontaktmetrik prüfte gegen eine waagerechte Basis, obwohl Objekte zur Hangneigung gekippt werden. Das erfand Durchdringung, die es nicht gab — wie ein schräg hängendes Bild mit einer Wasserwaage zu prüfen.</p>
+    </div>
+    <div class="find">
+      <span class="sig">M1 · Beleuchtung</span>
+      <h4>Jeder Hügel las sich als Grube</h4>
+      <p>Rasterzeile 0 liegt im Norden, der Zeilenindex läuft also gegen die Weltachse y. Ein Vorzeichenfehler dort kippt die gesamte Nord-Süd-Beleuchtung. Betrifft auch die Normalen, an denen später die Streuassets ausgerichtet werden.</p>
+    </div>
+    <div class="find">
+      <span class="sig">M3 · Qualitätstor</span>
+      <h4>Das Maß fürs Bildmodell war kaputt</h4>
+      <p>Der Palettentreue-Wert zählte nur <em>exakte</em> Farbtreffer. Für gemalte Bilder richtig, für alles Generierte wertlos: ein Schritt Rauschen ergibt 100 % Fehlerquote. Jetzt ein Abstand, dessen Toleranz aus der Palette selbst folgt.</p>
+    </div>
+    <div class="find">
+      <span class="sig">M2 → M3 · schwarzes Bild</span>
+      <h4>Der Horizont wurde zur Decke</h4>
+      <p>Die Horizontebene lag auf der Medianhöhe des Kartenrands. In einer Schluchtszene ist das Hochebenen-Niveau — jede Kamera am Schluchtgrund stand unter einer flächendeckenden Decke. Sichtbar wurde es erst an der ersten geplanten Szene.</p>
+    </div>
+    <div class="find">
+      <span class="sig">M1 · Erosion</span>
+      <h4>Ränder erzeugten Material aus dem Nichts</h4>
+      <p>Thermische Erosion verschiebt Material, sie erschafft keines. Dafür braucht es zwei verschiedene Randbehandlungen: geklemmt beim Messen von Höhenunterschieden, nullgefüllt beim Umverteilen. Beides geklemmt lässt Randzeilen bei jeder Iteration Material herstellen.</p>
+    </div>
+    <div class="find">
+      <span class="sig">M4 · Testaufbau</span>
+      <h4>Das Objekt kam 3,5-fach zu groß heraus</h4>
+      <p>Nicht die Formel war falsch, sondern mein Testaufbau: Eine Einzelbild-Rekonstruktion ist <em>nicht</em> metrisch wahr. Sie kommt in der Skala zurück, die den Bildausschnitt reproduziert — genau deshalb existiert die Skalenformel überhaupt.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="tag">ZAHLEN</span><h2>Stand in Zahlen</h2></div>
+  <div class="stats">
+    <div class="stat"><b>103</b><span>Tests, ~2,5&nbsp;s, ohne GPU und Netz</span></div>
+    <div class="stat"><b>99,7&nbsp;%</b><span>Bodenkontakt der Streuobjekte</span></div>
+    <div class="stat"><b>~10&nbsp;s</b><span>Geländestufe bei 768²</span></div>
+    <div class="stat"><b>0</b><span>Cloud-Dienste in der Pipeline</span></div>
+  </div>
+
+  <h3>Wo was läuft</h3>
+  <div class="tblwrap">
+  <table>
+    <thead><tr><th>Teil</th><th>Läuft in der Cloud-Sitzung</th><th>Braucht den eigenen Rechner</th></tr></thead>
+    <tbody>
+      <tr><td>Gelände, Material, Bewuchs</td><td>ja, vollständig</td><td>—</td></tr>
+      <tr><td>Planung aus Text</td><td>nur mit Attrappen-Modell</td><td>LM&nbsp;Studio o.&nbsp;ä.</td></tr>
+      <tr><td>Layout-Karte per Bildmodell</td><td>nur prozedurale Rückfallebene</td><td>Diffusionsmodell</td></tr>
+      <tr><td>Platzierungsmathematik</td><td>ja, synthetisch getestet</td><td>—</td></tr>
+      <tr><td>Tiefen-Gate</td><td>ja, synthetisch getestet</td><td>Tiefenschätzer</td></tr>
+      <tr><td>Objekte erzeugen</td><td>nein</td><td>SAM3, SAM3D, Hunyuan3D</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<footer>
+  Ausführliche Fassungen im Repository unter <code>docs/</code>: Architektur, Platzierung, Tiefen-Gate, Operatoren. Branch <code>claude/worldclaw-3d-generator-wbao6q</code>.
+</footer>
+
+</div>
