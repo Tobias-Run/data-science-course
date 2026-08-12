@@ -10,7 +10,32 @@ Zeitbedarf beim ersten Mal: etwa 30 Minuten, das meiste davon Downloads.
 
 ## Schritt 1 — Projekt herunterladen
 
-Öffne ein Terminal (Windows: **PowerShell**, macOS: **Terminal**) und gib ein:
+Öffne ein Terminal (Windows: **PowerShell**, macOS: **Terminal**).
+
+> **Windows:** Öffne ein *normales* PowerShell-Fenster, nicht „Als Administrator
+> ausführen". Ein Administrator-Fenster startet in `C:\WINDOWS\System32`, und
+> dort darf nichts angelegt werden — der erste Befehl scheitert dann mit
+> `Permission denied`.
+
+Wechsle zuerst in einen Ordner, in dem du schreiben darfst:
+
+**Windows:**
+```powershell
+cd $HOME
+mkdir projekte -Force
+cd projekte
+```
+
+**macOS / Linux:**
+```bash
+mkdir -p ~/projekte
+cd ~/projekte
+```
+
+Bewusst nicht *Dokumente*: wird der Ordner mit OneDrive oder iCloud
+synchronisiert, macht das später bei der Python-Umgebung Ärger.
+
+Dann das Projekt holen:
 
 ```bash
 git clone https://github.com/Tobias-Run/data-science-course.git
@@ -167,6 +192,10 @@ Alles liegt in `artifacts/mein-erster-lauf/`. In dieser Reihenfolge anschauen:
 ---
 
 ## Wenn etwas schiefgeht
+
+**`Permission denied` beim Klonen**
+Das Terminal steht in einem geschützten Systemordner. Erst mit den Befehlen aus
+Schritt 1 in einen eigenen Ordner wechseln.
 
 **`worldclaw: command not found` / `wird nicht erkannt`**
 Die Umgebung ist nicht aktiv. Schritt 3 wiederholen. Notfalls funktioniert
