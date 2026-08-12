@@ -109,6 +109,10 @@ def add_camera(bpy, name, location, look_at=(0.0, 0.0, 0.0), lens_mm=35.0, clip_
     """
     cam_data = bpy.data.cameras.new(name)
     cam_data.lens = lens_mm
+    # Explicit rather than AUTO: AUTO fits the sensor to the larger render
+    # dimension, which silently changes fx for portrait renders and would break
+    # the intrinsics written to cameras.json.
+    cam_data.sensor_fit = "HORIZONTAL"
     cam = bpy.data.objects.new(name, cam_data)
     bpy.context.collection.objects.link(cam)
     cam.location = location
@@ -140,9 +144,15 @@ def camera_intrinsics(bpy, cam, res_x: int, res_y: int) -> dict:
     cd = cam.data
     sensor = cd.sensor_width
     fx = cd.lens * res_x / sensor
-    fy = fx  # square pixels; Blender's sensor fit is horizontal by default here
+    fy = fx  # square pixels; sensor_fit is pinned to HORIZONTAL in add_camera
     cx, cy = res_x / 2.0, res_y / 2.0
     world_to_cam = np.array(cam.matrix_world.inverted(), dtype=np.float64)
+    # Blender camera coords are x right / y up / z backward; computer-vision
+    # convention is x right / y down / z forward.  Stage 3 does its ray algebra
+    # in CV convention (u = fx*X/Z + cx with image y downward), so the converted
+    # extrinsics are written alongside the raw ones instead of being derived --
+    # incorrectly, eventually -- by some future reader.
+    flip = np.diag([1.0, -1.0, -1.0, 1.0])
     return {
         "name": cam.name,
         "lens_mm": cd.lens,
@@ -150,9 +160,12 @@ def camera_intrinsics(bpy, cam, res_x: int, res_y: int) -> dict:
         "resolution": [res_x, res_y],
         "K": [[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]],
         "E_world_to_cam": world_to_cam.tolist(),
+        "E_world_to_cam_cv": (flip @ world_to_cam).tolist(),
         "location": list(cam.location),
         "rotation_euler": list(cam.rotation_euler),
-        "convention": "blender: camera looks along local -z, +y up",
+        "convention": "E_world_to_cam: blender cam looks along -z, +y up. "
+        "E_world_to_cam_cv: x right, y down, z forward; K projects u=fx*X/Z+cx, "
+        "v=fy*Y/Z+cy with pixel y downward.",
     }
 
 

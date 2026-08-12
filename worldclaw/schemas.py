@@ -276,13 +276,33 @@ class TerrainArtifacts(Base):
 
 
 class RegionalPlan(Base):
-    region: str
-    instance_index: int
-    camera_name: str
+    """One planned population zone.
+
+    Per the paper's pipeline figure these are *semantic* zones the planner draws
+    onto the layout map ("Cabin Village", "Fishing Village"), typically a
+    rectangular window -- not identical with the terrain-category patches of
+    ``RegionInstance``.  ``bbox_px`` carries that window; the terrain-category
+    link stays optional context.
+    """
+
+    name: str = Field(description="semantic zone name, e.g. 'cabin village'")
+    bbox_px: tuple[int, int, int, int] | None = Field(
+        default=None, description="planned window on the layout map (x0, y0, x1, y1)"
+    )
+    region: str | None = Field(
+        default=None, description="dominant terrain category, if one applies"
+    )
+    instance_index: int | None = None
+    camera_name: str = ""
     object_prompts: list[str] = Field(default_factory=list)
-    max_objects: int = Field(default=24, ge=1)
+    max_objects: int = Field(
+        default=50, ge=1, description="detection cap per region; the figure shows ~50"
+    )
     iteration_budget: int = Field(
-        default=3, ge=1, description="hard per-region refinement cap, enforced in code"
+        default=15,
+        ge=1,
+        description="hard per-region refinement cap, enforced in code; the "
+        "paper's pipeline figure shows a /loop budget of 15 per region",
     )
 
 

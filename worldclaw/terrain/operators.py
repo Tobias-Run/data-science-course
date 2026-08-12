@@ -167,13 +167,19 @@ def _shift(a: np.ndarray, dy: int, dx: int, fill: float | None = None) -> np.nda
     Using edge clamping for both is what makes a border row quietly manufacture
     material every iteration.
     """
-    out = np.roll(np.roll(a, dy, axis=0), dx, axis=1)
-    if dy != 0:
-        rows = slice(0, dy) if dy > 0 else slice(dy, None)
-        out[rows, :] = fill if fill is not None else (a[:1, :] if dy > 0 else a[-1:, :])
-    if dx != 0:
-        cols = slice(0, dx) if dx > 0 else slice(dx, None)
-        out[:, cols] = fill if fill is not None else (a[:, :1] if dx > 0 else a[:, -1:])
+    h, w = a.shape
+    if fill is None:
+        # Clamped-index gather: correct for any (dy, dx), including diagonals,
+        # where a roll-then-patch approach fills corners from the wrong source.
+        ry = np.clip(np.arange(h) - dy, 0, h - 1)
+        cx = np.clip(np.arange(w) - dx, 0, w - 1)
+        return a[np.ix_(ry, cx)]
+    out = np.full_like(a, fill)
+    ys_dst = slice(max(dy, 0), h + min(dy, 0))
+    xs_dst = slice(max(dx, 0), w + min(dx, 0))
+    ys_src = slice(max(-dy, 0), h + min(-dy, 0))
+    xs_src = slice(max(-dx, 0), w + min(-dx, 0))
+    out[ys_dst, xs_dst] = a[ys_src, xs_src]
     return out
 
 

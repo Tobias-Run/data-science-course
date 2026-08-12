@@ -59,11 +59,9 @@ def spec() -> TerrainSpec:
 
 @pytest.fixture
 def layout(spec: TerrainSpec) -> np.ndarray:
-    colors = {r.name: r.color for r in spec.regions}
     rgb = np.zeros((RES, RES, 3), dtype=np.uint8)
     rgb[:, :] = spec.regions[0].rgb
     rgb[: RES // 2, :] = spec.regions[1].rgb
-    del colors
     return rgb
 
 
@@ -169,6 +167,29 @@ def test_terrace_alpha_zero_is_a_no_op():
     delta = apply_operator(TerraceOperator(alpha=0.0, steps=8.0), _ctx(base))
     assert np.allclose(0.0 * delta, 0.0)  # alpha is applied by the caller
     assert delta.shape == base.shape
+
+
+def test_shift_semantics_for_all_offsets():
+    """``_shift`` must implement out[i,j] = a[i-dy, j-dx] for any offset.
+
+    Erosion itself only shifts along one axis at a time; this pins the general
+    contract so a future 8-connected neighbourhood cannot inherit a corner bug.
+    """
+    from worldclaw.terrain.operators import _shift
+
+    a = np.arange(20, dtype=np.float32).reshape(4, 5)
+    for dy, dx in ((1, 0), (-1, 0), (0, 2), (1, 1), (-1, 2), (2, -2)):
+        clamped = _shift(a, dy, dx)
+        filled = _shift(a, dy, dx, fill=0.0)
+        for i in range(4):
+            for j in range(5):
+                si, sj = i - dy, j - dx
+                ci, cj = min(max(si, 0), 3), min(max(sj, 0), 4)
+                assert clamped[i, j] == a[ci, cj]
+                expect = a[si, sj] if 0 <= si < 4 and 0 <= sj < 5 else 0.0
+                assert filled[i, j] == expect
+    # Fill mode must conserve what stays on the grid: nothing enters from outside.
+    assert _shift(a, 1, 1, fill=0.0).sum() == a[:-1, :-1].sum()
 
 
 def test_erosion_reduces_slopes_beyond_the_talus_angle():

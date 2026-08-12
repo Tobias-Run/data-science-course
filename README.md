@@ -156,6 +156,35 @@ are listed rather than omitted so the report always shows the full criterion set
 python -m pytest          # 29 tests, ~1 s
 ```
 
+## What the official material adds
+
+The paper's [GitHub repository](https://github.com/Tencent-Hunyuan/Hunyuan3D-WorldClaw)
+is a placeholder (README + figures, no code, no licence, no release timeline as
+of 2026-08-12), but its pipeline figure is unusually detailed and pins down
+several things the text leaves open. Incorporated here:
+
+- **Iteration budgets.** The figure shows `/loop (3/5)` on stage-2 scene
+  refinement and `/loop (6/15)` on stage-3 per-region refinement — so the hard
+  budgets are ~5 per scene and ~15 per region. `RegionalPlan.iteration_budget`
+  defaults to 15 accordingly.
+- **Population zones are planned, not derived.** Stage 3 regions are semantic
+  windows the planner draws onto the layout map ("Cabin Village", "Fishing
+  Village"), not connected components of terrain categories. `RegionalPlan`
+  carries a `bbox_px` window for this; `RegionInstance` remains the
+  terrain-category view.
+- **~50 detected objects per region** (`obj 1 … obj 50` in the detection box);
+  `RegionalPlan.max_objects` defaults to 50.
+- **Architecture confirmation.** Their agent drives per-stage scripts over YAML
+  plans (`terrain_param.yaml`, `scatter_plan.yaml`, `img_gen.py`, `terrain.py`,
+  `scatter.py`, `img_edit.py`, `3d_placement.py`) — the same
+  files-plus-small-CLIs shape as this repo, which was a guess and is now a match.
+  Texture generation is explicitly "procedural node graph OR texture map", as
+  planned for M2, and the final scene ships normal + instance maps.
+
+Not recoverable from the figure: the §3.2 tolerances `[-ε⁻, +ε⁺]`, the contact
+threshold, and the operator formulations. Those need the full text (blocked from
+this environment's network) or remain our own choices.
+
 ## Deviations from the paper
 
 | | Paper | Here |
