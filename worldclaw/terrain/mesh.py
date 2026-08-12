@@ -62,7 +62,7 @@ def write_obj(hf: Heightfield, path: str | Path, stride: int = 1) -> Path:
     uvs = grid_uvs(h, w)
     faces = grid_faces(h, w) + 1  # OBJ indices are 1-based
 
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         fh.write(f"# worldclaw terrain '{hf.spec.name}'  {w}x{h}  "
                  f"{hf.spec.world_size_m:.1f}m\n")
         np.savetxt(fh, verts, fmt="v %.4f %.4f %.4f")

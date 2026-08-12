@@ -22,6 +22,31 @@ from ..schemas import (
 )
 from .schema import RegionPlan, ScenePlan
 
+# Characters Windows forbids in a filename, plus ASCII control characters.
+# Unicode letters (accents, non-Latin scripts) are fine on Windows/NTFS and are
+# left alone; only this specific set actually breaks path creation.
+_WINDOWS_FORBIDDEN = set('<>:"/\\|?*') | {chr(c) for c in range(32)}
+_WINDOWS_RESERVED = {
+    "con", "prn", "aux", "nul",
+    *(f"com{i}" for i in range(1, 10)), *(f"lpt{i}" for i in range(1, 10)),
+}
+
+
+def _slugify(text: str, fallback: str, max_len: int = 60) -> str:
+    """A scene name straight from a local model, made safe as a path component.
+
+    The model is free to write anything -- punctuation, a colon, a trailing
+    dot, a device name Windows reserves for printers. All of that becomes part
+    of a directory name (``new_run_id`` uses this string as its prefix), so it
+    is sanitised once, here, rather than trusted at every call site downstream.
+    """
+    out = "".join(" " if c in _WINDOWS_FORBIDDEN else c for c in text)
+    out = "-".join(out.lower().split())  # collapse any whitespace run to "-"
+    out = out.strip(" .-")
+    if not out or out in _WINDOWS_RESERVED:
+        out = fallback
+    return out[:max_len].strip(" .-") or fallback
+
 # Base colour and roughness per category, in linear RGB.
 _MATERIAL = {
     "water": ((0.06, 0.13, 0.20), 0.25),
@@ -157,7 +182,7 @@ def expand(plan: ScenePlan, seed: int = 0, resolution: int = 768) -> TerrainSpec
         base_rgb, roughness = _MATERIAL.get(rp.category, ((0.5, 0.5, 0.5), 0.9))
         regions.append(
             RegionSpec(
-                name=rp.name.strip().lower().replace(" ", "_") or rp.category,
+                name=_slugify(rp.name, fallback=rp.category, max_len=40).replace("-", "_"),
                 color=color,
                 base_height=float(rp.elevation),
                 blend_width_px=6.0 if rp.category in _RIDGED else 10.0,
@@ -168,14 +193,15 @@ def expand(plan: ScenePlan, seed: int = 0, resolution: int = 768) -> TerrainSpec
             )
         )
 
+    slug = _slugify(plan.name, fallback="scene")
     return TerrainSpec(
-        name=plan.name.strip().lower().replace(" ", "-") or "scene",
+        name=slug,
         seed=seed,
         world_size_m=plan.world_size_m,
         height_scale_m=height_scale,
         resolution=resolution,
         blend_width_px=8.0,
         despeckle_px=2,  # generated layout maps are noisier than painted ones
-        layout_map=f"layouts/{plan.name.strip().lower().replace(' ', '-')}.png",
+        layout_map=f"layouts/{slug}.png",
         regions=regions,
     )
