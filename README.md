@@ -4,7 +4,7 @@ Reimplementation of the pipeline described in Tencent Hunyuan, *"WorldClaw:
 Agentic 3D Open-World Generation at Scale"* (arXiv 2608.05248). The report ships
 no code; everything here is written from the paper's description.
 
-**Status: M1 and M2 complete.** A layout map goes in, an explicit walkable,
+**Status: M1, M2 and M3 complete.** A layout map goes in, an explicit walkable,
 textured, populated terrain comes out — height field, region weights, splat
 maps, blended procedural material, scattered props with a measured contact rate,
 OBJ, 16-bit height map, glTF, and diagnostic renders from headless Blender. The schemas for the later stages are
@@ -13,11 +13,74 @@ will read them.
 
 ```
 Prompt q
-  ├─ Stage 1  Intent + planning        -> SceneSpec, TerrainSpec, layout map   [M3]
+  ├─ Stage 1  Intent + planning        -> SceneSpec, TerrainSpec, layout map   [M3 ✓]
   ├─ Stage 2  Global terrain           -> height field, weights, meshes,
   │                                        splat maps, scattered props        [M1 ✓ M2 ✓]
   └─ Stage 3  Regional objects         -> PlacementRecord per object           [M4]
 ```
+
+## Planning from a prompt (M3)
+
+```bash
+worldclaw llm-check                                   # is LM Studio reachable?
+worldclaw plan --prompt "A dried-out canyon in red sandstone, scree on the floor" \
+               --llm-model your-model --run red-gorge
+worldclaw terrain --spec artifacts/red-gorge/spec/terrain_spec.json --run red-gorge
+worldclaw blender --run red-gorge --render
+```
+
+**Runs entirely on local models.** The planner talks to any OpenAI-compatible
+endpoint — LM Studio, Ollama, llama.cpp's server, vLLM — over the standard
+library, no vendor SDK. Default `http://localhost:1234/v1`, LM Studio's.
+
+**Schema-constrained decoding.** The endpoint receives a JSON schema and the
+model physically cannot emit anything else, so the planner cannot return
+something the pipeline fails to parse. `$ref`/`$defs` are inlined first: grammar
+compilers vary in how well they follow references, and a half-followed reference
+degrades silently into an unconstrained model.
+
+### Intent and planning are separate, as in the paper
+
+Intent analysis **extracts only what the prompt states** — an unmentioned field
+stays `null`. Planning then fills the gaps and lists every field it invented in
+`inferred_fields`, so what the user asked for stays distinguishable from what
+was assumed. Merged into one step, a confident model quietly overwrites the
+user's intent and nothing afterwards can tell the difference.
+
+### The planner states intent, not parameters
+
+It never emits noise frequencies or erosion iteration counts. It says *"upper
+plateau, high, terraced"* and `planning/expand.py` turns character into numbers
+by rule. Two reasons: a local model asked for octave counts produces confident
+nonsense, and the numbers stay reviewable and identical across models — swapping
+the LLM changes a scene's design, never its numerical sanity. One rule earns its
+keep visibly: terrace step count is derived from the scene's relief, so benches
+stay around 12 m whether the scene is a dune field or a mountain range.
+
+### The layout map
+
+The planner writes an image prompt; a **local** image model draws it. Backends:
+`procedural` (the M1 template painter, no model, always available),
+`diffusers` (a local diffusion model in a subprocess that exits afterwards —
+the same VRAM discipline as the Blender stage) and `comfyui`.
+
+A diffusion model does not emit exact palette colours, and it does not need to.
+The map is categorical, so the output is quantised to the nearest palette entry
+and despeckled — machinery that already existed for hand-painted input. What
+guards it is `evaluate_layout`: a model that renders the requested colours
+scores near zero unmatched, one that painted a landscape instead is rejected
+before it can produce a nonsense terrain, and the generation retries within a
+budget enforced in code.
+
+Making that gate real required fixing the metric it rests on. `unmatched_fraction`
+counted only *exact* palette hits, which is right for a painted PNG and useless
+for anything generated: one step of noise put it at 100%. It is now a distance,
+with the tolerance derived from the palette's own minimum separation (capped, or
+a sparse palette would accept mid-grey as a match for either of two colours).
+
+A layout map is the *easy* image task — flat colour blocks, not a
+topography-preserving edit. A small local model is enough here; the graphics card
+gets tight in M4, not in M3.
 
 ## Quick start
 
@@ -191,7 +254,7 @@ plausibility, topography fidelity of the image edit, cost per scene. They
 are listed rather than omitted so the report always shows the full criterion set.
 
 ```bash
-python -m pytest          # 45 tests, ~2 s
+python -m pytest          # 63 tests, ~2 s
 ```
 
 ## What the official material adds
@@ -235,10 +298,6 @@ this environment's network) or remain our own choices.
 
 ## Next
 
-- **M3** — intent analysis (extracts only what the prompt states) and planning
-  (fills the gaps), then the layout map from an image model. `SceneSpec` records
-  which fields the planner inferred, so user intent stays distinguishable from
-  defaults.
 - **M4** — render → image edit → SAM3 → SAM3D → ray-pair placement (§3.2), with a
   depth-map gate on the edit: if the image model moves the topography, the ray
   back-projection is invalid and the edit must be rejected.

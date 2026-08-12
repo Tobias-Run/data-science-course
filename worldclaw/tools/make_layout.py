@@ -138,6 +138,42 @@ def _paint(labels: np.ndarray, order: list[str], colors: dict[str, str]) -> np.n
 
 TEMPLATES = {"canyon": canyon, "desert": desert}
 
+# Each template paints fixed roles. Listed lowest-lying first, which is how a
+# planned spec's regions are matched onto them.
+TEMPLATE_ROLES = {
+    "canyon": ["basin", "slope", "plateau", "rock"],
+    "desert": ["sand", "dune", "rock"],
+}
+
+
+def roles_for_spec(template: str, spec) -> dict[str, str]:
+    """Map a spec's regions onto a template's roles by elevation.
+
+    The templates were written against the names of the hand-made test specs,
+    but a planned scene names its regions whatever the planner chose ("gorge
+    floor", "upper terrace").  Ordering both sides by elevation gives a
+    deterministic match that keeps the low ground low.
+    """
+    roles = TEMPLATE_ROLES.get(template)
+    if roles is None:
+        raise ValueError(f"unknown layout template {template!r}; have {sorted(TEMPLATES)}")
+
+    ordered = sorted(spec.regions, key=lambda r: r.base_height)
+    if not ordered:
+        raise ValueError("spec has no regions")
+
+    colors: dict[str, str] = {}
+    for i, role in enumerate(roles):
+        # More roles than regions: reuse the highest region rather than fail, so
+        # a two-region plan still renders on a four-role template.
+        colors[role] = ordered[min(i, len(ordered) - 1)].color
+    return colors
+
+
+def generate_for_spec(template: str, size: int, seed: int, spec) -> np.ndarray:
+    """Paint a template using the colours of an arbitrary spec's regions."""
+    return generate(template, size, seed, roles_for_spec(template, spec))
+
 
 def generate(template: str, size: int, seed: int, colors: dict[str, str]) -> np.ndarray:
     try:

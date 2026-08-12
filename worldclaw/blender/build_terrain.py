@@ -287,21 +287,32 @@ def default_cameras(height_m: np.ndarray, cell_size_m: float) -> list[dict]:
     return cams
 
 
+def backdrop_height(height_m: np.ndarray, clearance_m: float = 0.5) -> float:
+    """Height for the horizon plane: below every terrain sample.
+
+    Split out from ``add_backdrop`` so the invariant that makes the difference
+    between a landscape and a black frame is testable without Blender.
+    """
+    return float(height_m.min()) - clearance_m
+
+
 def add_backdrop(bpy, height_m: np.ndarray, cell_size_m: float, material, extent_factor: float = 12.0):
     """A large plane at the terrain's edge height, continuing to the horizon.
 
     Without it the world simply stops at the tile boundary and the lower half of
     the sky shows through as a dark band that reads as open water.  That is not
     only ugly: stage 3 feeds these renders to an image-edit model, and a false
-    sea invites it to populate the scene with boats.  The plane sits at the
-    median height of the terrain's border so the seam is as flat as the data
-    allows, and it is excluded from placement -- nothing is ever scattered or
-    anchored on it.
+    sea invites it to populate the scene with boats.  It is excluded from
+    placement -- nothing is ever scattered or anchored on it.
+
+    The plane sits just *below the lowest ground in the scene*.  An earlier
+    version used the median height of the terrain's border, which put it at
+    plateau level in a canyon scene: a camera standing on the gorge floor was
+    then under a horizon-to-horizon ceiling and rendered pure black.  Only a
+    plane beneath every terrain sample is guaranteed never to enclose a
+    viewpoint that stands on the terrain.
     """
-    border = np.concatenate(
-        [height_m[0, :], height_m[-1, :], height_m[:, 0], height_m[:, -1]]
-    )
-    z = float(np.median(border))
+    z = backdrop_height(height_m)
     size = max(height_m.shape) * cell_size_m * extent_factor
 
     bpy.ops.mesh.primitive_plane_add(size=size, location=(0.0, 0.0, z))

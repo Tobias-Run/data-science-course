@@ -338,6 +338,23 @@ def test_mesh_winding_is_counter_clockwise_from_above(spec, layout):
     assert (nz > 0).all()
 
 
+def test_backdrop_never_encloses_a_viewpoint(spec, layout):
+    """The horizon plane must sit below every terrain sample.
+
+    Placed at the border's median height instead, it sat at plateau level in a
+    canyon scene and put any camera on the gorge floor under a horizon-to-horizon
+    ceiling -- the render came out pure black.
+    """
+    from worldclaw.blender.build_terrain import backdrop_height
+
+    rm = masks_mod.extract_masks(spec, layout)
+    hf = hf_mod.build_heightfield(spec, rm)
+    z = backdrop_height(hf.height_m)
+    assert z < float(hf.height_m.min())
+    # An observer standing anywhere on the terrain is above the plane.
+    assert z < float(hf.height_m.min()) + 1.7
+
+
 def test_world_frame_matches_the_blender_stage(spec, layout):
     """The exporter and the Blender builder must agree on the world frame.
 

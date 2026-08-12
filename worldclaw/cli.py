@@ -125,6 +125,55 @@ def cmd_blender(args) -> int:
     return 0
 
 
+def cmd_plan(args) -> int:
+    """Prompt -> TerrainSpec + layout map, via a local OpenAI-compatible LLM."""
+    from .planning.llm import LLMConfig, LocalLLM
+    from .planning.pipeline import run_planning_stage
+
+    llm = LocalLLM(LLMConfig(base_url=args.llm_url, model=args.llm_model,
+                             temperature=args.temperature))
+    run = RunContext(args.run or new_run_id("scene"), force=args.force)
+    scene, layout = run_planning_stage(
+        llm, args.prompt, run,
+        seed=args.seed, resolution=args.resolution,
+        layout_backend=args.layout_backend, layout_template=args.template or "canyon",
+        model_id=args.image_model, llm_label=f"{args.llm_url}:{args.llm_model}",
+    )
+    spec = scene.terrain
+    print(run.report())
+    print(f"  scene '{spec.name}' — {len(spec.regions)} regions, "
+          f"{spec.world_size_m:.0f} m across, {spec.height_scale_m:.0f} m relief")
+    for r in spec.regions:
+        print(f"    {r.name:16} h={r.base_height:.2f}  {r.color}  "
+              f"ops={[o.kind for o in r.operators]}")
+    if scene.inferred_fields:
+        print(f"  planner filled in (not stated by the prompt): "
+              f"{', '.join(scene.inferred_fields)}")
+    print(f"  spec:   {run.dir / 'spec' / 'terrain_spec.json'}")
+    print(f"  layout: {layout}")
+    print(f"\n  next: worldclaw terrain --spec {run.dir / 'spec' / 'terrain_spec.json'} "
+          f"--run {run.run_id}")
+    return 0
+
+
+def cmd_llm_check(args) -> int:
+    """Connectivity probe for the local LLM endpoint."""
+    from .planning.llm import LLMConfig, LLMError, LocalLLM
+
+    llm = LocalLLM(LLMConfig(base_url=args.llm_url, model=args.llm_model))
+    try:
+        models = llm.available_models()
+    except LLMError as exc:
+        print(str(exc))
+        return 1
+    print(f"{args.llm_url} serves {len(models)} model(s):")
+    for m in models:
+        print(f"  {m}{'   <- selected' if m == args.llm_model else ''}")
+    if args.llm_model not in models:
+        print(f"\nwarning: --llm-model {args.llm_model!r} is not in the list above")
+    return 0
+
+
 def cmd_check(args) -> int:
     from . import checks
 
@@ -197,6 +246,29 @@ def main(argv=None) -> int:
     p = sub.add_parser("blender", help="height field -> .blend/glTF + diagnostic renders")
     add_blender_args(p)
     p.set_defaults(func=cmd_blender)
+
+    def add_llm_args(p):
+        p.add_argument("--llm-url", default="http://localhost:1234/v1",
+                       help="OpenAI-compatible endpoint (LM Studio default)")
+        p.add_argument("--llm-model", default="local-model")
+
+    p = sub.add_parser("plan", help="prompt -> TerrainSpec + layout map (local LLM)")
+    p.add_argument("--prompt", required=True)
+    add_llm_args(p)
+    p.add_argument("--run")
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--resolution", type=int, default=768)
+    p.add_argument("--temperature", type=float, default=0.2)
+    p.add_argument("--layout-backend", default="procedural",
+                   choices=["procedural", "diffusers", "comfyui"])
+    p.add_argument("--template", help="procedural backend: which template to paint")
+    p.add_argument("--image-model", default="stabilityai/sdxl-turbo")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_plan)
+
+    p = sub.add_parser("llm-check", help="probe the local LLM endpoint")
+    add_llm_args(p)
+    p.set_defaults(func=cmd_llm_check)
 
     p = sub.add_parser("check", help="run the automated acceptance checks")
     p.add_argument("--run", required=True)

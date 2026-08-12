@@ -67,18 +67,54 @@ def load_layout(path: str, resolution: int) -> np.ndarray:
     return np.asarray(img, dtype=np.uint8)
 
 
-def quantize_to_palette(rgb: np.ndarray, palette: np.ndarray) -> tuple[np.ndarray, float]:
+# Roughly the drift a JPEG pass plus anti-aliasing produces; beyond it a pixel
+# is not a rendering of the requested colour any more.
+_TOLERANCE_CAP = 40.0
+
+
+def palette_tolerance(palette: np.ndarray) -> float:
+    """Distance within which a pixel still counts as that palette colour.
+
+    Half the palette's own minimum separation: closer than that and a pixel is
+    unambiguously one entry, further and it is drifting towards another.
+    Deriving it from the palette rather than hard-coding it means a denser
+    palette automatically demands a more faithful image.
+    """
+    pal = palette.astype(np.float64)
+    if len(pal) < 2:
+        return _TOLERANCE_CAP
+    d = np.sqrt(((pal[:, None, :] - pal[None, :, :]) ** 2).sum(-1))
+    np.fill_diagonal(d, np.inf)
+    # Capped: half the separation is the widest radius that stays unambiguous,
+    # but on a sparse palette that is enormous -- two far-apart colours would
+    # accept mid-grey as a match for either. The cap keeps "close to the
+    # requested colour" meaning what it says.
+    return min(float(d.min()) / 2.0, _TOLERANCE_CAP)
+
+
+def quantize_to_palette(
+    rgb: np.ndarray, palette: np.ndarray, tolerance: float | None = None
+) -> tuple[np.ndarray, float]:
     """Assign every pixel to the nearest palette colour.
 
-    Returns the label image and the fraction of pixels that were not an exact
-    match (JPEG artefacts, anti-aliased brush edges -- tolerated, but reported).
+    Returns the label image and the fraction of pixels further than
+    ``tolerance`` from any palette entry.
+
+    The tolerance matters more than it looks.  Counting only *exact* matches
+    works for a hand-painted PNG and is useless for anything generated: a single
+    step of noise, one JPEG pass or one anti-aliased edge puts the figure at
+    100%, so the number could never gate an image model.  Measured as a distance
+    it says what it should -- how far the image drifted from the requested
+    palette.
     """
+    tol = palette_tolerance(palette) if tolerance is None else tolerance
     flat = rgb.reshape(-1, 3).astype(np.int32)
     pal = palette.astype(np.int32)
     # (N, R) squared distances; palettes are small, so the full matrix is fine.
     d = ((flat[:, None, :] - pal[None, :, :]) ** 2).sum(-1)
     labels = np.argmin(d, axis=1).astype(np.int16)
-    unmatched = float((d[np.arange(len(flat)), labels] > 0).mean())
+    nearest = d[np.arange(len(flat)), labels]
+    unmatched = float((nearest > tol * tol).mean())
     return labels.reshape(rgb.shape[:2]), unmatched
 
 

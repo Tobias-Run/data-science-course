@@ -14,6 +14,9 @@ dependencies = [
 # Blender as a Python module. Pinned to the 5.x line; needs CPython 3.11.
 blender = ["bpy>=5.0"]
 dev = ["pytest>=7.4"]
+# Local layout-map generation. Only needed for --layout-backend diffusers;
+# the procedural backend has no extra dependency.
+imagegen = ["torch>=2.2", "diffusers>=0.30", "transformers>=4.44", "accelerate>=0.33"]
 
 [project.scripts]
 worldclaw = "worldclaw.cli:main"
