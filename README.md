@@ -24,7 +24,7 @@ Prompt q
 ## Planning from a prompt (M3)
 
 ```bash
-worldclaw llm-check                                   # is LM Studio reachable?
+worldclaw doctor                                      # is this machine ready?
 worldclaw plan --prompt "A dried-out canyon in red sandstone, scree on the floor" \
                --llm-model your-model --run red-gorge
 worldclaw terrain --spec artifacts/red-gorge/spec/terrain_spec.json --run red-gorge
@@ -292,6 +292,7 @@ this environment's network) or remain our own choices.
 
 | Document | What it covers |
 |---|---|
+| [docs/runbook.md](docs/runbook.md) | Setting up and doing a full run on your own machine |
 | [docs/architecture.md](docs/architecture.md) | Stage boundaries, caching, conventions, testing strategy |
 | [docs/placement.md](docs/placement.md) | Ray-pair object placement, paper section 3.2, in full |
 | [docs/depth-gate.md](docs/depth-gate.md) | Topography fidelity of the image edit, and its known limitation |

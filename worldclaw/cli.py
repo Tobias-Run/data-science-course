@@ -166,6 +166,15 @@ def cmd_plan(args) -> int:
     return 0
 
 
+def cmd_doctor(args) -> int:
+    """One pre-flight check for every dependency a full run touches."""
+    from . import doctor
+
+    probes = doctor.run(args.llm_url, args.llm_model, check_llm=not args.no_llm)
+    print(doctor.format_report(probes))
+    return 1 if any(p.status == "fail" for p in probes) else 0
+
+
 def cmd_llm_check(args) -> int:
     """Connectivity probe for the local LLM endpoint."""
     from .planning.llm import LLMConfig, LLMError, LocalLLM
@@ -206,6 +215,40 @@ def cmd_check(args) -> int:
         )
     )
     return 0 if all(c.ok for c in results) else 1
+
+
+def cmd_all(args) -> int:
+    """Prompt to rendered, checked world in one command.
+
+    Each stage is cached on its inputs, so a failure part-way through costs only
+    the stage that failed -- rerunning picks up where it stopped.
+    """
+    from .artifacts import new_run_id as _new
+
+    args.run = args.run or _new("scene")
+    print(f"=== 1/4  planning  (prompt -> spec + layout) ===")
+    rc = cmd_plan(args)
+    if rc:
+        return rc
+
+    spec_path = Path("artifacts") / args.run / "spec" / "terrain_spec.json"
+    args.spec, args.layout = str(spec_path), None
+    print(f"\n=== 2/4  terrain  (spec -> height field, material, props) ===")
+    rc = cmd_terrain(args)
+    if rc:
+        return rc
+
+    print(f"\n=== 3/4  blender  (mesh, renders, glTF) ===")
+    rc = cmd_blender(args)
+    if rc:
+        return rc
+
+    print(f"\n=== 4/4  acceptance checks ===")
+    rc = cmd_check(args)
+    run_dir = Path("artifacts") / args.run
+    print(f"\nrun complete: {run_dir}")
+    print(f"  look at:  {run_dir / 'blender' / 'render_cam_ground.png'}")
+    return rc
 
 
 def cmd_run(args) -> int:
@@ -278,6 +321,11 @@ def main(argv=None) -> int:
     p.add_argument("--force", action="store_true")
     p.set_defaults(func=cmd_plan)
 
+    p = sub.add_parser("doctor", help="pre-flight check before a full run")
+    add_llm_args(p)
+    p.add_argument("--no-llm", action="store_true", help="skip the LLM probes")
+    p.set_defaults(func=cmd_doctor)
+
     p = sub.add_parser("llm-check", help="probe the local LLM endpoint")
     add_llm_args(p)
     p.set_defaults(func=cmd_llm_check)
@@ -287,6 +335,22 @@ def main(argv=None) -> int:
     p.add_argument("--spec", required=True)
     p.add_argument("--layout")
     p.set_defaults(func=cmd_check)
+
+    p = sub.add_parser("all", help="prompt -> spec -> terrain -> renders -> checks")
+    p.add_argument("--prompt", required=True)
+    add_llm_args(p)
+    p.add_argument("--run")
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--resolution", type=int, default=768)
+    p.add_argument("--temperature", type=float, default=0.2)
+    p.add_argument("--layout-backend", default="procedural",
+                   choices=["procedural", "diffusers", "comfyui"])
+    p.add_argument("--template", help="procedural backend: which template to paint")
+    p.add_argument("--image-model", default="stabilityai/sdxl-turbo")
+    p.add_argument("--force", action="store_true")
+    p.add_argument("--obj-stride", type=int, default=1)
+    add_blender_args(p, with_run=False)
+    p.set_defaults(func=cmd_all)
 
     p = sub.add_parser("run", help="terrain + blender in one go")
     add_terrain_args(p)
