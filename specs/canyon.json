@@ -1,0 +1,184 @@
+{
+  "name": "canyon",
+  "seed": 20260805,
+  "world_size_m": 2048.0,
+  "height_scale_m": 320.0,
+  "resolution": 768,
+  "blend_width_px": 6.0,
+  "despeckle_px": 1,
+  "layout_map": "layouts/canyon.png",
+  "layout_template": "canyon",
+  "regions": [
+    {
+      "name": "plateau",
+      "color": "#b0a08c",
+      "base_height": 0.78,
+      "blend_width_px": 4.0,
+      "noise": [
+        {
+          "kind": "perlin",
+          "frequency": 3.0,
+          "weight": 0.065,
+          "octaves": 5,
+          "gain": 0.5
+        },
+        {
+          "kind": "perlin",
+          "frequency": 13.0,
+          "weight": 0.018,
+          "octaves": 4
+        }
+      ],
+      "operators": [
+        {
+          "kind": "terrace",
+          "alpha": 0.7,
+          "steps": 26.0,
+          "sharpness": 0.72,
+          "warp": 0.035
+        },
+        {
+          "kind": "erosion",
+          "alpha": 1.0,
+          "iterations": 20,
+          "talus_deg": 45.0,
+          "strength": 0.5
+        }
+      ],
+      "material": {
+        "base_color": [
+          0.62,
+          0.55,
+          0.44
+        ],
+        "roughness": 0.92
+      }
+    },
+    {
+      "name": "slope",
+      "color": "#a2704a",
+      "base_height": 0.42,
+      "blend_width_px": 9.0,
+      "noise": [
+        {
+          "kind": "ridged",
+          "frequency": 6.0,
+          "weight": 0.09,
+          "octaves": 5
+        },
+        {
+          "kind": "perlin",
+          "frequency": 20.0,
+          "weight": 0.02,
+          "octaves": 3
+        }
+      ],
+      "operators": [
+        {
+          "kind": "erosion",
+          "alpha": 1.0,
+          "iterations": 30,
+          "talus_deg": 36.0,
+          "strength": 0.55,
+          "smooth_sigma_px": 0.5
+        }
+      ],
+      "material": {
+        "base_color": [
+          0.48,
+          0.34,
+          0.24
+        ],
+        "roughness": 0.95
+      }
+    },
+    {
+      "name": "basin",
+      "color": "#2f9e8f",
+      "base_height": 0.06,
+      "blend_width_px": 5.0,
+      "noise": [
+        {
+          "kind": "perlin",
+          "frequency": 6.0,
+          "weight": 0.022,
+          "octaves": 4
+        },
+        {
+          "kind": "perlin",
+          "frequency": 28.0,
+          "weight": 0.005,
+          "octaves": 2
+        }
+      ],
+      "operators": [
+        {
+          "kind": "erosion",
+          "alpha": 1.0,
+          "iterations": 20,
+          "talus_deg": 20.0,
+          "strength": 0.6
+        }
+      ],
+      "material": {
+        "base_color": [
+          0.42,
+          0.4,
+          0.33
+        ],
+        "roughness": 0.88
+      },
+      "scatter": [
+        {
+          "asset_class": "boulder",
+          "density_per_km2": 900.0,
+          "max_slope_deg": 22.0
+        },
+        {
+          "asset_class": "shrub",
+          "density_per_km2": 2400.0,
+          "max_slope_deg": 18.0
+        }
+      ]
+    },
+    {
+      "name": "rock",
+      "color": "#8c8c8c",
+      "base_height": 0.86,
+      "blend_width_px": 7.0,
+      "noise": [
+        {
+          "kind": "ridged",
+          "frequency": 5.0,
+          "weight": 0.12,
+          "octaves": 5
+        }
+      ],
+      "operators": [
+        {
+          "kind": "peak",
+          "alpha": 0.3,
+          "count": 4,
+          "radius": 0.13,
+          "sharpness": 2.4,
+          "ridge_amount": 0.45
+        },
+        {
+          "kind": "erosion",
+          "alpha": 1.0,
+          "iterations": 45,
+          "talus_deg": 46.0,
+          "strength": 0.5
+        }
+      ],
+      "material": {
+        "base_color": [
+          0.38,
+          0.37,
+          0.36
+        ],
+        "roughness": 0.85
+      }
+    }
+  ]
+}

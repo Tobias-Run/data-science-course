@@ -1,0 +1,29 @@
+[project]
+name = "worldclaw"
+version = "0.1.0"
+description = "Reimplementation of the WorldClaw agentic 3D open-world generation pipeline (M1: global terrain from a layout map)"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pillow>=10.0",
+    "pydantic>=2.5",
+]
+
+[project.optional-dependencies]
+# Blender as a Python module. Pinned to the 5.x line; needs CPython 3.11.
+blender = ["bpy>=5.0"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+worldclaw = "worldclaw.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["worldclaw*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

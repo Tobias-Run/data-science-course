@@ -1,0 +1,159 @@
+{
+  "name": "desert",
+  "seed": 20260805,
+  "world_size_m": 2048.0,
+  "height_scale_m": 90.0,
+  "resolution": 768,
+  "blend_width_px": 14.0,
+  "despeckle_px": 1,
+  "layout_map": "layouts/desert.png",
+  "layout_template": "desert",
+  "regions": [
+    {
+      "name": "dune",
+      "color": "#c8894b",
+      "base_height": 0.3,
+      "blend_width_px": 18.0,
+      "noise": [
+        {
+          "kind": "perlin",
+          "frequency": 2.5,
+          "weight": 0.06,
+          "octaves": 3
+        }
+      ],
+      "operators": [
+        {
+          "kind": "dune",
+          "alpha": 0.22,
+          "wavelength": 0.075,
+          "direction_deg": 28.0,
+          "asymmetry": 0.62,
+          "crest_sharpness": 1.7,
+          "meander": 0.4
+        },
+        {
+          "kind": "dune",
+          "alpha": 0.05,
+          "wavelength": 0.021,
+          "direction_deg": 47.0,
+          "asymmetry": 0.4,
+          "crest_sharpness": 1.2,
+          "meander": 0.6
+        },
+        {
+          "kind": "erosion",
+          "alpha": 1.0,
+          "iterations": 12,
+          "talus_deg": 32.0,
+          "strength": 0.45
+        }
+      ],
+      "material": {
+        "base_color": [
+          0.78,
+          0.62,
+          0.36
+        ],
+        "roughness": 0.75
+      },
+      "scatter": [
+        {
+          "asset_class": "desert_grass",
+          "density_per_km2": 600.0,
+          "max_slope_deg": 24.0
+        }
+      ]
+    },
+    {
+      "name": "sand",
+      "color": "#e0c072",
+      "base_height": 0.16,
+      "blend_width_px": 12.0,
+      "noise": [
+        {
+          "kind": "perlin",
+          "frequency": 4.0,
+          "weight": 0.025,
+          "octaves": 3
+        },
+        {
+          "kind": "perlin",
+          "frequency": 26.0,
+          "weight": 0.006,
+          "octaves": 2
+        }
+      ],
+      "operators": [
+        {
+          "kind": "erosion",
+          "alpha": 1.0,
+          "iterations": 15,
+          "talus_deg": 18.0,
+          "strength": 0.6
+        }
+      ],
+      "material": {
+        "base_color": [
+          0.71,
+          0.63,
+          0.47
+        ],
+        "roughness": 0.9
+      },
+      "scatter": [
+        {
+          "asset_class": "pebble",
+          "density_per_km2": 5000.0,
+          "max_slope_deg": 15.0
+        }
+      ]
+    },
+    {
+      "name": "rock",
+      "color": "#8c8c8c",
+      "base_height": 0.62,
+      "blend_width_px": 6.0,
+      "noise": [
+        {
+          "kind": "ridged",
+          "frequency": 7.0,
+          "weight": 0.1,
+          "octaves": 4
+        }
+      ],
+      "operators": [
+        {
+          "kind": "peak",
+          "alpha": 0.35,
+          "count": 2,
+          "radius": 0.1,
+          "sharpness": 1.8,
+          "ridge_amount": 0.5
+        },
+        {
+          "kind": "terrace",
+          "alpha": 0.5,
+          "steps": 6.0,
+          "sharpness": 0.8,
+          "warp": 0.08
+        },
+        {
+          "kind": "erosion",
+          "alpha": 1.0,
+          "iterations": 35,
+          "talus_deg": 44.0,
+          "strength": 0.5
+        }
+      ],
+      "material": {
+        "base_color": [
+          0.45,
+          0.36,
+          0.3
+        ],
+        "roughness": 0.88
+      }
+    }
+  ]
+}

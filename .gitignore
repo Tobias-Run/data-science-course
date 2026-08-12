@@ -1,0 +1,10 @@
+# Generated pipeline output. Every artefact here is reproducible from a spec
+# and a seed: `worldclaw run --spec specs/canyon.json`.
+artifacts/
+layouts/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
