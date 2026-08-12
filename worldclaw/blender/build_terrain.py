@@ -440,6 +440,20 @@ def main(argv=None) -> int:
                     help="omit the horizon plane; the tile edge then shows bare sky")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
 
+    # Resolve every path argument to absolute before bpy touches any of them.
+    # bpy.data.images.load() and friends resolve a relative path against
+    # Blender's own notion of "current file directory" -- meaningful for a
+    # saved .blend, undefined for the empty in-memory scene this script
+    # creates -- rather than the OS process's working directory the way
+    # open() or pathlib would. That mismatch is platform-dependent: it did
+    # not surface on Linux, and did on the first real Windows run, on
+    # exactly this call. Absolute paths sidestep the ambiguity entirely.
+    args.heightfield = str(Path(args.heightfield).resolve())
+    args.out_dir = str(Path(args.out_dir).resolve())
+    for attr in ("splat", "scatter", "spec"):
+        if getattr(args, attr):
+            setattr(args, attr, str(Path(getattr(args, attr)).resolve()))
+
     # Material colours come from the spec's MaterialSpec so the layout map stays
     # the single source for what a region looks like.
     args.region_colors, args.region_roughness = {}, {}
@@ -471,9 +485,10 @@ def main(argv=None) -> int:
 
         doc = json.loads(Path(args.splat).read_text(encoding="utf-8"))
         first = doc["maps"][0]
-        splat_path = (Path(args.splat).parent / Path(first["path"]).name)
-        if not splat_path.exists():  # path recorded relative to the run root
-            splat_path = Path(args.splat).parent.parent / first["path"]
+        # splat.json is always written by pipeline.py at "<run>/terrain/splat.json"
+        # with image paths recorded relative to "<run>/", via RunContext.rel() --
+        # so two levels up from splat.json is always the right base, never a guess.
+        splat_path = Path(args.splat).parent.parent / first["path"]
         regions = [
             {
                 "name": name,
