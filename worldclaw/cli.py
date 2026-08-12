@@ -132,6 +132,20 @@ def cmd_blender(args) -> int:
             print(f"  WARNING: no depth map produced for "
                   f"{', '.join(s['depth_unavailable_for'])}; use the same depth "
                   f"estimator on both images instead (see docs/depth-gate.md)")
+        # The subprocess's own stderr is only surfaced on failure, so an
+        # overexposure warning printed there would otherwise never reach the
+        # user on a run that technically succeeded -- read the numbers back
+        # from the summary and print them here instead.
+        diag = s.get("diagnostics", {})
+        stats = diag.get("render_stats", {})
+        overexposed = {n: v for n, v in stats.items() if v.get("mean_0_255", 0) > 235}
+        if overexposed:
+            detail = ", ".join(f"{n} (mean {v['mean_0_255']:.0f}/255)" for n, v in overexposed.items())
+            print(f"  WARNING: render(s) look overexposed: {detail}")
+            print(f"    view_transform={diag.get('view_transform_applied')!r}  "
+                  f"exposure={diag.get('exposure')}  "
+                  f"splat_colorspace={diag.get('splat_colorspace')!r}  "
+                  f"cycles_device={diag.get('cycles_device_requested')!r}")
     return 0
 
 

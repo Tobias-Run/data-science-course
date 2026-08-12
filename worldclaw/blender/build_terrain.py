@@ -479,6 +479,14 @@ def main(argv=None) -> int:
     scene.unit_settings.system = "METRIC"
     scene.unit_settings.scale_length = 1.0
 
+    # Colour-management diagnostics, populated as the scene is built and dumped
+    # into blender_summary.json. This run's colour pipeline traced clean on
+    # every check available on this machine (AgX assignment, Non-Color image
+    # colourspace) yet still rendered a Windows terrain pure white -- so the
+    # next report needs hard numbers, not another guess, to find where colour
+    # actually gets lost on that platform.
+    diagnostics: dict = {}
+
     ob = build_mesh(bpy, height, cell, args.name)
     if args.splat and Path(args.splat).exists():
         from .materials import build_terrain_material
@@ -500,6 +508,11 @@ def main(argv=None) -> int:
         ]
         terrain_mat = build_terrain_material(bpy, "terrain_blend", str(splat_path), regions)
         ob.data.materials.append(terrain_mat)
+        diagnostics["splat_colorspace"] = next(
+            (n.image.colorspace_settings.name
+             for n in terrain_mat.node_tree.nodes if n.type == "TEX_IMAGE" and n.image),
+            None,
+        )
     else:
         terrain_mat = add_material(bpy, ob)
     if not args.no_backdrop:
@@ -536,12 +549,17 @@ def main(argv=None) -> int:
     # physical sky both contribute, and at default strengths the terrain renders
     # as a featureless white sheet.
     scene.view_settings.exposure = -2.0
+    diagnostics["view_transform_applied"] = scene.view_settings.view_transform
+    diagnostics["exposure"] = scene.view_settings.exposure
+    diagnostics["cycles_device_requested"] = scene.cycles.device
+    diagnostics["render_samples"] = args.render_samples
 
     intrinsics = [camera_intrinsics(bpy, c, args.render_width, args.render_height) for c in cams]
     (out / "cameras.json").write_text(json.dumps(intrinsics, indent=2), encoding="utf-8")
 
     depth_node = enable_depth_pass(bpy, out / "_depth_tmp") if args.depth else None
     rendered, depth_maps, depth_warnings = [], [], []
+    render_stats = {}
     if args.render:
         for cam in cams:
             scene.camera = cam
@@ -551,6 +569,19 @@ def main(argv=None) -> int:
                 set_depth_output_name(depth_node, cam.name)
             bpy.ops.render.render(write_still=True)
             rendered.append(str(path))
+
+            # Read the PNG straight back and measure it: this is the fastest
+            # way to tell an overexposed render from a correct one without a
+            # human opening the file, and it is cheap since the file is on
+            # disk already.
+            from PIL import Image as _PILImage
+
+            px = np.asarray(_PILImage.open(path).convert("RGB"), dtype=np.float32)
+            render_stats[cam.name] = {
+                "mean_0_255": round(float(px.mean()), 1),
+                "p95_0_255": round(float(np.percentile(px, 95)), 1),
+                "near_white_fraction": round(float((px.min(axis=-1) >= 250).mean()), 4),
+            }
 
             if depth_node is not None:
                 exrs = sorted(out.glob(f"{cam.name}_*.exr")) + \
@@ -581,7 +612,17 @@ def main(argv=None) -> int:
         "depth_unavailable_for": depth_warnings,
         "scatter_instances": scatter_count,
         "blender": bpy.app.version_string,
+        "diagnostics": {**diagnostics, "render_stats": render_stats},
     }
+    overexposed = [n for n, s in render_stats.items() if s["mean_0_255"] > 235]
+    if overexposed:
+        print(
+            f"WARNING: render(s) {overexposed} look overexposed "
+            f"(mean brightness > 235/255 -- a healthy lit slope is usually "
+            f"120-200). See blender_summary.json > diagnostics for the exact "
+            f"numbers and colour-management settings this run used.",
+            file=sys.stderr,
+        )
     if depth_warnings:
         # Loud, because a silently missing reference map would leave the M4
         # gate comparing an estimate against nothing and calling it a pass.
