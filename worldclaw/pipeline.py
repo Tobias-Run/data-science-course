@@ -72,7 +72,7 @@ def run_terrain_stage(
             hard=z["hard"],
             weights=z["weights"],
             names=[r.name for r in spec.regions],
-            unmatched_fraction=json.loads(masks_json.read_text())["unmatched_fraction"],
+            unmatched_fraction=json.loads(masks_json.read_text(encoding="utf-8"))["unmatched_fraction"],
         )
 
     # ---- height field -----------------------------------------------------
@@ -144,11 +144,11 @@ def run_terrain_stage(
             )
 
     instances = [
-        hf_mod.RegionInstance(**i) for i in json.loads(instances_json.read_text())["instances"]
+        hf_mod.RegionInstance(**i) for i in json.loads(instances_json.read_text(encoding="utf-8"))["instances"]
     ]
-    stats = json.loads(stats_json.read_text())
-    scatter_doc = json.loads(scatter_json.read_text())
-    splat_doc = json.loads(splat_json.read_text())
+    stats = json.loads(stats_json.read_text(encoding="utf-8"))
+    scatter_doc = json.loads(scatter_json.read_text(encoding="utf-8"))
+    splat_doc = json.loads(splat_json.read_text(encoding="utf-8"))
 
     art = TerrainArtifacts(
         spec_name=spec.name,

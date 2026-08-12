@@ -215,7 +215,7 @@ def check_splat_partition(splat_dir: Path, tol: float = 2.0 / 255.0) -> Check:
 
 def run_all(run_dir: Path, spec: TerrainSpec, layout_path: Path) -> list[Check]:
     t0 = time.perf_counter()
-    manifest = json.loads((run_dir / "manifest.json").read_text())
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
 
     with np.load(run_dir / "terrain" / "weights.npz") as z:
         rm = masks_mod.RegionMasks(
@@ -224,15 +224,15 @@ def run_all(run_dir: Path, spec: TerrainSpec, layout_path: Path) -> list[Check]:
             weights=z["weights"],
             names=[r.name for r in spec.regions],
             unmatched_fraction=json.loads(
-                (run_dir / "terrain" / "masks.json").read_text()
+                (run_dir / "terrain" / "masks.json").read_text(encoding="utf-8")
             )["unmatched_fraction"],
         )
     with np.load(run_dir / "terrain" / "heightfield.npz") as z:
         hf = hf_mod.Heightfield(height_m=z["height_m"], normalised=z["normalised"], spec=spec)
 
-    art = json.loads((run_dir / "terrain_artifacts.json").read_text())
+    art = json.loads((run_dir / "terrain_artifacts.json").read_text(encoding="utf-8"))
     scatter_path = run_dir / "terrain" / "scatter.json"
-    scatter = json.loads(scatter_path.read_text()) if scatter_path.exists() else {}
+    scatter = json.loads(scatter_path.read_text(encoding="utf-8")) if scatter_path.exists() else {}
 
     checks = [
         check_region_coverage(spec, rm),

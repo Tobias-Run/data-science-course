@@ -47,9 +47,9 @@ def run_planning_stage(
             run.write_model(expand(plan, seed=seed, resolution=resolution),
                             "spec", "terrain_spec.json")
 
-    intent = SceneIntent.model_validate_json(intent_json.read_text())
-    plan = ScenePlan.model_validate_json(plan_json.read_text())
-    spec = TerrainSpec.model_validate_json(spec_json.read_text())
+    intent = SceneIntent.model_validate_json(intent_json.read_text(encoding="utf-8"))
+    plan = ScenePlan.model_validate_json(plan_json.read_text(encoding="utf-8"))
+    spec = TerrainSpec.model_validate_json(spec_json.read_text(encoding="utf-8"))
 
     # ---- layout map --------------------------------------------------------
     layout_path = run.path("plan", "layout.png")

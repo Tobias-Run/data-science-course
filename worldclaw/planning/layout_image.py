@@ -138,7 +138,7 @@ def _run_comfyui(prompt: str, spec: TerrainSpec, out: Path, endpoint: str, workf
     """
     import urllib.request
 
-    wf = json.loads(Path(workflow).read_text())
+    wf = json.loads(Path(workflow).read_text(encoding="utf-8"))
     # Substitute the prompt into any node that declares a positive text input.
     for node in wf.values():
         if isinstance(node, dict) and "inputs" in node:

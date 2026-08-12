@@ -77,7 +77,7 @@ class RunContext:
     def _load_manifest(self) -> dict[str, Any]:
         if self.manifest_path.exists():
             try:
-                return json.loads(self.manifest_path.read_text())
+                return json.loads(self.manifest_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 pass
         return {
@@ -88,7 +88,7 @@ class RunContext:
         }
 
     def save_manifest(self) -> None:
-        self.manifest_path.write_text(json.dumps(self.manifest, indent=2, sort_keys=True))
+        self.manifest_path.write_text(json.dumps(self.manifest, indent=2, sort_keys=True), encoding="utf-8")
 
     # ---------------------------------------------------------------- stages
     @contextmanager
@@ -132,12 +132,12 @@ class RunContext:
     # ------------------------------------------------------------------- io
     def write_model(self, model: BaseModel, *parts: str) -> Path:
         p = self.path(*parts)
-        p.write_text(model.model_dump_json(indent=2))
+        p.write_text(model.model_dump_json(indent=2), encoding="utf-8")
         return p
 
     def write_json(self, obj: Any, *parts: str) -> Path:
         p = self.path(*parts)
-        p.write_text(json.dumps(obj, indent=2, sort_keys=True, default=str))
+        p.write_text(json.dumps(obj, indent=2, sort_keys=True, default=str), encoding="utf-8")
         return p
 
     def report(self) -> str:

@@ -21,7 +21,7 @@ from .tools import make_layout
 
 
 def _load_spec(path: str) -> TerrainSpec:
-    return TerrainSpec.model_validate_json(Path(path).read_text())
+    return TerrainSpec.model_validate_json(Path(path).read_text(encoding="utf-8"))
 
 
 def cmd_layout(args) -> int:
@@ -118,7 +118,7 @@ def cmd_blender(args) -> int:
 
     summary = run_dir / "blender" / "blender_summary.json"
     if summary.exists():
-        s = json.loads(summary.read_text())
+        s = json.loads(summary.read_text(encoding="utf-8"))
         print(
             f"blender {s['blender']}: {s['polygons']} polys, "
             f"{s.get('scatter_instances', 0)} props, {s['world_size_m']:.0f} m across, "
@@ -212,7 +212,8 @@ def cmd_check(args) -> int:
              for c in results],
             indent=2,
             default=str,
-        )
+        ),
+        encoding="utf-8",
     )
     return 0 if all(c.ok for c in results) else 1
 

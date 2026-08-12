@@ -444,7 +444,7 @@ def main(argv=None) -> int:
     # the single source for what a region looks like.
     args.region_colors, args.region_roughness = {}, {}
     if args.spec and Path(args.spec).exists():
-        for r in json.loads(Path(args.spec).read_text())["regions"]:
+        for r in json.loads(Path(args.spec).read_text(encoding="utf-8"))["regions"]:
             mat = r.get("material", {})
             args.region_colors[r["name"]] = tuple(mat.get("base_color", (0.35, 0.33, 0.30)))
             args.region_roughness[r["name"]] = float(mat.get("roughness", 0.9))
@@ -469,7 +469,7 @@ def main(argv=None) -> int:
     if args.splat and Path(args.splat).exists():
         from .materials import build_terrain_material
 
-        doc = json.loads(Path(args.splat).read_text())
+        doc = json.loads(Path(args.splat).read_text(encoding="utf-8"))
         first = doc["maps"][0]
         splat_path = (Path(args.splat).parent / Path(first["path"]).name)
         if not splat_path.exists():  # path recorded relative to the run root
@@ -496,7 +496,7 @@ def main(argv=None) -> int:
     if args.scatter and Path(args.scatter).exists():
         from .materials import instance_scatter
 
-        insts = json.loads(Path(args.scatter).read_text())["instances"]
+        insts = json.loads(Path(args.scatter).read_text(encoding="utf-8"))["instances"]
         instance_scatter(bpy, insts)
         scatter_count = len(insts)
 
@@ -523,7 +523,7 @@ def main(argv=None) -> int:
     scene.view_settings.exposure = -2.0
 
     intrinsics = [camera_intrinsics(bpy, c, args.render_width, args.render_height) for c in cams]
-    (out / "cameras.json").write_text(json.dumps(intrinsics, indent=2))
+    (out / "cameras.json").write_text(json.dumps(intrinsics, indent=2), encoding="utf-8")
 
     depth_node = enable_depth_pass(bpy, out / "_depth_tmp") if args.depth else None
     rendered, depth_maps, depth_warnings = [], [], []
@@ -577,7 +577,7 @@ def main(argv=None) -> int:
             "before and after images, where the estimator's bias cancels.",
             file=sys.stderr,
         )
-    (out / "blender_summary.json").write_text(json.dumps(summary, indent=2))
+    (out / "blender_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
     return 0
 
