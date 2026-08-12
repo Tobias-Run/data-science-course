@@ -2,6 +2,7 @@
 
 | Document | What it covers |
 |---|---|
+| [erste-schritte.md](erste-schritte.md) | Schritt-für-Schritt-Anleitung für den ersten Lauf (Deutsch) |
 | [runbook.md](runbook.md) | Setting up and doing a full run on your own machine |
 | [architecture.md](architecture.md) | Stage boundaries, caching, conventions, testing strategy |
 | [placement.md](placement.md) | Ray-pair object placement, paper section 3.2, in full |

@@ -292,6 +292,7 @@ this environment's network) or remain our own choices.
 
 | Document | What it covers |
 |---|---|
+| [docs/erste-schritte.md](docs/erste-schritte.md) | Schritt-für-Schritt-Anleitung für den ersten Lauf (Deutsch) |
 | [docs/runbook.md](docs/runbook.md) | Setting up and doing a full run on your own machine |
 | [docs/architecture.md](docs/architecture.md) | Stage boundaries, caching, conventions, testing strategy |
 | [docs/placement.md](docs/placement.md) | Ray-pair object placement, paper section 3.2, in full |
