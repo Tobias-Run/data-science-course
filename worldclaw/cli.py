@@ -92,12 +92,20 @@ def cmd_blender(args) -> int:
         "--decimate", str(args.decimate),
         "--render-samples", str(args.samples),
     ]
+    for flag, rel in (("--splat", "terrain/splat.json"), ("--scatter", "terrain/scatter.json")):
+        if (run_dir / rel).exists():
+            cmd += [flag, str(run_dir / rel)]
+    spec_path = run_dir / "spec" / "terrain_spec.json"
+    if spec_path.exists():
+        cmd += ["--spec", str(spec_path)]
     if args.render:
         cmd.append("--render")
     if not args.no_gltf:
         cmd.append("--export-gltf")
     if args.save_blend:
         cmd.append("--save-blend")
+    if args.no_backdrop:
+        cmd.append("--no-backdrop")
 
     # Separate process on purpose: Blender's memory is released before anything
     # else in the pipeline loads.
@@ -111,7 +119,8 @@ def cmd_blender(args) -> int:
         s = json.loads(summary.read_text())
         print(
             f"blender {s['blender']}: {s['polygons']} polys, "
-            f"{s['world_size_m']:.0f} m across, {len(s['renders'])} renders -> {run_dir / 'blender'}"
+            f"{s.get('scatter_instances', 0)} props, {s['world_size_m']:.0f} m across, "
+            f"{len(s['renders'])} renders -> {run_dir / 'blender'}"
         )
     return 0
 
@@ -183,6 +192,7 @@ def main(argv=None) -> int:
         p.add_argument("--decimate", type=int, default=1)
         p.add_argument("--no-gltf", action="store_true")
         p.add_argument("--save-blend", action="store_true")
+        p.add_argument("--no-backdrop", action="store_true")
 
     p = sub.add_parser("blender", help="height field -> .blend/glTF + diagnostic renders")
     add_blender_args(p)

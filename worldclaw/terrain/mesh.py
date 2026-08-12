@@ -1,11 +1,7 @@
 """Height field -> triangle mesh, plus the raster exports downstream stages want.
 
-World frame convention, fixed here once and relied on everywhere else:
-
-* x east, y north, z up (Blender's convention, so no axis juggling later);
-* the origin sits at the centre of the world, not a corner, so cameras and
-  object placements are symmetric around it;
-* raster row 0 is the *north* edge, which is why the y coordinate counts down.
+The world frame itself lives in ``frame.py``; everything here converts through
+it rather than reimplementing the convention.
 """
 
 from __future__ import annotations
@@ -15,15 +11,15 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from .frame import world_from_raster
 from .heightfield import Heightfield
 
 
 def grid_vertices(hf: Heightfield) -> np.ndarray:
     """(H*W, 3) float32 vertex positions in world metres."""
     h, w = hf.height_m.shape
-    cell = hf.spec.cell_size_m
-    xs = (np.arange(w, dtype=np.float32) - (w - 1) / 2.0) * cell
-    ys = ((h - 1) / 2.0 - np.arange(h, dtype=np.float32)) * cell
+    xs, _ = world_from_raster(hf.height_m.shape, hf.spec.cell_size_m, 0, np.arange(w))
+    _, ys = world_from_raster(hf.height_m.shape, hf.spec.cell_size_m, np.arange(h), 0)
     gx, gy = np.meshgrid(xs, ys)
     return np.stack([gx.ravel(), gy.ravel(), hf.height_m.ravel()], axis=1).astype(np.float32)
 
@@ -59,8 +55,8 @@ def write_obj(hf: Heightfield, path: str | Path, stride: int = 1) -> Path:
     height = hf.height_m[::stride, ::stride]
     h, w = height.shape
     cell = hf.spec.cell_size_m * stride
-    xs = (np.arange(w, dtype=np.float32) - (w - 1) / 2.0) * cell
-    ys = ((h - 1) / 2.0 - np.arange(h, dtype=np.float32)) * cell
+    xs, _ = world_from_raster((h, w), cell, 0, np.arange(w))
+    _, ys = world_from_raster((h, w), cell, np.arange(h), 0)
     gx, gy = np.meshgrid(xs, ys)
     verts = np.stack([gx.ravel(), gy.ravel(), height.ravel()], axis=1)
     uvs = grid_uvs(h, w)

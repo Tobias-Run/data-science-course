@@ -18,6 +18,8 @@ from .layout import masks as masks_mod
 from .schemas import TerrainArtifacts, TerrainSpec
 from .terrain import heightfield as hf_mod
 from .terrain import mesh as mesh_mod
+from .terrain import scatter as scatter_mod
+from .terrain import splat as splat_mod
 
 
 def run_terrain_stage(
@@ -111,10 +113,42 @@ def run_terrain_stage(
                 "region_instances.json",
             )
 
+    # ---- M2: splat maps + scattering ---------------------------------------
+    splat_json = run.path("terrain", "splat.json")
+    scatter_json = run.path("terrain", "scatter.json")
+
+    with run.stage("surface", inputs, [splat_json, scatter_json]) as todo:
+        if todo:
+            descriptors = splat_mod.write_splat_maps(
+                rm.weights, rm.names, run.path("terrain", "splat").parent / "splat"
+            )
+            run.write_json(
+                {
+                    "maps": [
+                        {**d, "path": run.rel(d["path"])} for d in descriptors
+                    ],
+                    "note": "8-bit RGBA blend weights; also the Unreal landscape "
+                    "layer-weight format (M5)",
+                },
+                "terrain",
+                "splat.json",
+            )
+            instances_s = scatter_mod.scatter_scene(spec, hf, rm.weights)
+            run.write_json(
+                {
+                    "statistics": scatter_mod.contact_statistics(instances_s),
+                    "instances": [i.model_dump(mode="json") for i in instances_s],
+                },
+                "terrain",
+                "scatter.json",
+            )
+
     instances = [
         hf_mod.RegionInstance(**i) for i in json.loads(instances_json.read_text())["instances"]
     ]
     stats = json.loads(stats_json.read_text())
+    scatter_doc = json.loads(scatter_json.read_text())
+    splat_doc = json.loads(splat_json.read_text())
 
     art = TerrainArtifacts(
         spec_name=spec.name,
@@ -131,6 +165,9 @@ def run_terrain_stage(
         mesh_obj=run.rel(obj_path),
         preview_png=run.rel(preview_path),
         region_instances=instances,
+        splat_maps=[m["path"] for m in splat_doc["maps"]],
+        scatter_json=run.rel(scatter_json),
+        scatter_statistics=scatter_doc["statistics"],
         checksum=sha256_bytes(hf.height_m.tobytes()),
     )
     run.write_model(art, "terrain_artifacts.json")

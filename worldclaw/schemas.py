@@ -154,7 +154,7 @@ class MaterialSpec(Base):
 
 
 class ScatterSpec(Base):
-    """Consumed in M2 (asset scattering); declared now, unused in M1."""
+    """One scattered asset class within a region."""
 
     asset_class: str
     density_per_km2: float = Field(gt=0.0)
@@ -162,6 +162,36 @@ class ScatterSpec(Base):
     height_range_m: tuple[float, float] | None = None
     scale_range: tuple[float, float] = (0.8, 1.2)
     align_to_normal: float = Field(default=0.6, ge=0.0, le=1.0)
+    footprint_radius_m: float = Field(
+        default=1.0, gt=0.0, description="contact-bearing radius at scale 1.0"
+    )
+    min_spacing_m: float = Field(default=3.0, gt=0.0, description="centre-to-centre minimum")
+    embed: float = Field(
+        default=0.25,
+        ge=0.0,
+        le=1.0,
+        description="fraction of the footprint's local relief to sink the base into "
+        "the ground; trades a little burial for contact all round on a slope",
+    )
+    contact_tolerance_m: float = Field(
+        default=0.15, gt=0.0, description="base-to-terrain distance still counted as contact"
+    )
+
+
+class ScatterInstance(Base):
+    """One placed prop. Also the Unreal instanced-mesh export row (M5)."""
+
+    asset_class: str
+    region: str
+    index: int
+    position_m: tuple[float, float, float]
+    normal: tuple[float, float, float]
+    yaw_deg: float
+    scale: float
+    footprint_radius_m: float
+    contact_ratio: float = Field(ge=0.0, le=1.0)
+    gap_m: float = Field(ge=0.0, description="largest float above the terrain")
+    penetration_m: float = Field(ge=0.0, description="largest terrain poke above the base")
 
 
 class RegionSpec(Base):
@@ -267,6 +297,9 @@ class TerrainArtifacts(Base):
     mesh_obj: str
     preview_png: str | None = None
     region_instances: list[RegionInstance] = Field(default_factory=list)
+    splat_maps: list[str] = Field(default_factory=list)
+    scatter_json: str | None = None
+    scatter_statistics: dict[str, float] = Field(default_factory=dict)
     checksum: str = Field(default="", description="sha256 of the height field, for reproducibility")
 
 

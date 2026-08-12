@@ -159,11 +159,58 @@ def check_stage_timing(manifest: dict) -> Check:
 # --------------------------------------------------------------------------
 
 _DEFERRED = {
-    "contact_rate": "M4 -- needs placed objects (section 3.2 contact search)",
     "scale_plausibility": "M4 -- needs reconstructed object heights per category",
     "topography_fidelity_of_edit": "M4 -- depth map before/after the image edit",
     "cost_per_scene": "M3 -- no model calls in the terrain stage yet",
 }
+
+
+def check_scatter_contact(scatter: dict, min_rate: float = 0.95) -> Check:
+    """Contact rate of the scattered props.
+
+    This is the paper's contact-rate criterion, measured against the terrain for
+    M2's props.  M4 reuses the same measurement for reconstructed object meshes,
+    so the number is comparable across milestones rather than being a
+    scatter-specific invention.
+    """
+    stats = scatter.get("statistics", {})
+    n = int(stats.get("count", 0))
+    if n == 0:
+        return Check("scatter_contact", "skipped", "no scatter specs in this terrain", stats)
+    rate = float(stats.get("contact_rate", 0.0))
+    return Check(
+        "scatter_contact",
+        "pass" if rate >= min_rate else "fail",
+        f"{rate:.1%} of {n} props in contact (>= {min_rate:.0%} required), "
+        f"max gap {stats.get('max_gap_m', 0):.3f} m, "
+        f"max penetration {stats.get('max_penetration_m', 0):.3f} m",
+        stats,
+    )
+
+
+def check_splat_partition(splat_dir: Path, tol: float = 2.0 / 255.0) -> Check:
+    """The splat maps must still partition after 8-bit quantisation.
+
+    The shader blends by these channels; if they no longer sum to one, the
+    terrain gains bands that are darker or brighter than any region specifies.
+    """
+    from PIL import Image
+
+    totals = None
+    files = sorted(splat_dir.glob("splat_*.png"))
+    if not files:
+        return Check("splat_partition", "skipped", "no splat maps written")
+    for p in files:
+        a = np.asarray(Image.open(p), dtype=np.float32) / 255.0
+        s = a.sum(axis=-1)
+        totals = s if totals is None else totals + s
+    err = float(np.abs(totals - 1.0).max())
+    return Check(
+        "splat_partition",
+        "pass" if err <= tol else "fail",
+        f"max |sum(channels) - 1| = {err:.4f} over {len(files)} map(s) (tol {tol:.4f})",
+        {"max_error": err, "maps": len(files)},
+    )
 
 
 def run_all(run_dir: Path, spec: TerrainSpec, layout_path: Path) -> list[Check]:
@@ -184,6 +231,8 @@ def run_all(run_dir: Path, spec: TerrainSpec, layout_path: Path) -> list[Check]:
         hf = hf_mod.Heightfield(height_m=z["height_m"], normalised=z["normalised"], spec=spec)
 
     art = json.loads((run_dir / "terrain_artifacts.json").read_text())
+    scatter_path = run_dir / "terrain" / "scatter.json"
+    scatter = json.loads(scatter_path.read_text()) if scatter_path.exists() else {}
 
     checks = [
         check_region_coverage(spec, rm),
@@ -192,6 +241,8 @@ def run_all(run_dir: Path, spec: TerrainSpec, layout_path: Path) -> list[Check]:
         check_slope_plausibility(hf),
         check_heightmap_quantisation(hf, run_dir / "terrain" / "heightmap_16bit.png"),
         check_reproducibility(spec, layout_path, art["checksum"]),
+        check_scatter_contact(scatter),
+        check_splat_partition(run_dir / "terrain" / "splat"),
         check_stage_timing(manifest),
     ]
     checks += [Check(name, "skipped", why) for name, why in _DEFERRED.items()]

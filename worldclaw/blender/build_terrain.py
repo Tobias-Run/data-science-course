@@ -20,6 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
+from ..terrain import frame
+
 
 def _require_bpy():
     try:
@@ -170,20 +172,13 @@ def camera_intrinsics(bpy, cam, res_x: int, res_y: int) -> dict:
 
 
 def sample_height(height_m: np.ndarray, cell_size_m: float, x: float, y: float) -> float:
-    """Terrain height at a world position (nearest sample).
-
-    The same raster-to-world convention as the mesh: origin at the centre, row 0
-    on the north edge.
-    """
-    h, w = height_m.shape
-    col = int(round(x / cell_size_m + (w - 1) / 2.0))
-    row = int(round((h - 1) / 2.0 - y / cell_size_m))
-    return float(height_m[np.clip(row, 0, h - 1), np.clip(col, 0, w - 1)])
+    """Terrain height at a world position, bilinearly interpolated."""
+    return float(frame.sample_height_m(height_m, cell_size_m, x, y))
 
 
 def _world_xy(height_m: np.ndarray, cell_size_m: float, row: int, col: int) -> tuple[float, float]:
-    h, w = height_m.shape
-    return ((col - (w - 1) / 2.0) * cell_size_m, ((h - 1) / 2.0 - row) * cell_size_m)
+    x, y = frame.world_from_raster(height_m.shape, cell_size_m, row, col)
+    return (float(x), float(y))
 
 
 def framed_camera(
@@ -292,6 +287,31 @@ def default_cameras(height_m: np.ndarray, cell_size_m: float) -> list[dict]:
     return cams
 
 
+def add_backdrop(bpy, height_m: np.ndarray, cell_size_m: float, material, extent_factor: float = 12.0):
+    """A large plane at the terrain's edge height, continuing to the horizon.
+
+    Without it the world simply stops at the tile boundary and the lower half of
+    the sky shows through as a dark band that reads as open water.  That is not
+    only ugly: stage 3 feeds these renders to an image-edit model, and a false
+    sea invites it to populate the scene with boats.  The plane sits at the
+    median height of the terrain's border so the seam is as flat as the data
+    allows, and it is excluded from placement -- nothing is ever scattered or
+    anchored on it.
+    """
+    border = np.concatenate(
+        [height_m[0, :], height_m[-1, :], height_m[:, 0], height_m[:, -1]]
+    )
+    z = float(np.median(border))
+    size = max(height_m.shape) * cell_size_m * extent_factor
+
+    bpy.ops.mesh.primitive_plane_add(size=size, location=(0.0, 0.0, z))
+    ob = bpy.context.active_object
+    ob.name = "backdrop"
+    if material is not None:
+        ob.data.materials.append(material)
+    return ob
+
+
 def add_sky(bpy, strength: float = 0.15):
     """A physical sky, not a black void.
 
@@ -323,7 +343,21 @@ def main(argv=None) -> int:
     ap.add_argument("--decimate", type=int, default=1, help="raster stride before meshing")
     ap.add_argument("--export-gltf", action="store_true")
     ap.add_argument("--save-blend", action="store_true")
+    ap.add_argument("--splat", help="terrain/splat.json; enables the blended material")
+    ap.add_argument("--scatter", help="terrain/scatter.json; instances the props")
+    ap.add_argument("--spec", help="terrain spec, for per-region material colours")
+    ap.add_argument("--no-backdrop", action="store_true",
+                    help="omit the horizon plane; the tile edge then shows bare sky")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
+
+    # Material colours come from the spec's MaterialSpec so the layout map stays
+    # the single source for what a region looks like.
+    args.region_colors, args.region_roughness = {}, {}
+    if args.spec and Path(args.spec).exists():
+        for r in json.loads(Path(args.spec).read_text())["regions"]:
+            mat = r.get("material", {})
+            args.region_colors[r["name"]] = tuple(mat.get("base_color", (0.35, 0.33, 0.30)))
+            args.region_roughness[r["name"]] = float(mat.get("roughness", 0.9))
 
     bpy = _require_bpy()
     out = Path(args.out_dir)
@@ -342,9 +376,39 @@ def main(argv=None) -> int:
     scene.unit_settings.scale_length = 1.0
 
     ob = build_mesh(bpy, height, cell, args.name)
-    add_material(bpy, ob)
+    if args.splat and Path(args.splat).exists():
+        from .materials import build_terrain_material
+
+        doc = json.loads(Path(args.splat).read_text())
+        first = doc["maps"][0]
+        splat_path = (Path(args.splat).parent / Path(first["path"]).name)
+        if not splat_path.exists():  # path recorded relative to the run root
+            splat_path = Path(args.splat).parent.parent / first["path"]
+        regions = [
+            {
+                "name": name,
+                "channel": ch,
+                "base_color": args.region_colors.get(name, (0.35, 0.33, 0.30)),
+                "roughness": args.region_roughness.get(name, 0.9),
+            }
+            for ch, name in sorted(first["channels"].items())
+        ]
+        terrain_mat = build_terrain_material(bpy, "terrain_blend", str(splat_path), regions)
+        ob.data.materials.append(terrain_mat)
+    else:
+        terrain_mat = add_material(bpy, ob)
+    if not args.no_backdrop:
+        add_backdrop(bpy, height, cell, terrain_mat)
     add_sun(bpy)
     add_sky(bpy)
+
+    scatter_count = 0
+    if args.scatter and Path(args.scatter).exists():
+        from .materials import instance_scatter
+
+        insts = json.loads(Path(args.scatter).read_text())["instances"]
+        instance_scatter(bpy, insts)
+        scatter_count = len(insts)
 
     world_size = cell * height.shape[1]
     hmax = float(height.max())
@@ -392,6 +456,7 @@ def main(argv=None) -> int:
         "height_max_m": hmax,
         "cell_size_m": cell,
         "renders": rendered,
+        "scatter_instances": scatter_count,
         "blender": bpy.app.version_string,
     }
     (out / "blender_summary.json").write_text(json.dumps(summary, indent=2))

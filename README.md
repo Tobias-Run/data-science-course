@@ -4,16 +4,18 @@ Reimplementation of the pipeline described in Tencent Hunyuan, *"WorldClaw:
 Agentic 3D Open-World Generation at Scale"* (arXiv 2608.05248). The report ships
 no code; everything here is written from the paper's description.
 
-**Status: M1 complete.** A layout map goes in, an explicit walkable terrain mesh
-comes out — height field, region weights, OBJ, 16-bit height map, glTF, and
-diagnostic renders from headless Blender. The schemas for the later stages are
+**Status: M1 and M2 complete.** A layout map goes in, an explicit walkable,
+textured, populated terrain comes out — height field, region weights, splat
+maps, blended procedural material, scattered props with a measured contact rate,
+OBJ, 16-bit height map, glTF, and diagnostic renders from headless Blender. The schemas for the later stages are
 already declared, so the terrain stage writes its artefacts in the shape stage 3
 will read them.
 
 ```
 Prompt q
   ├─ Stage 1  Intent + planning        -> SceneSpec, TerrainSpec, layout map   [M3]
-  ├─ Stage 2  Global terrain           -> height field, weights, meshes        [M1 ✓ / M2]
+  ├─ Stage 2  Global terrain           -> height field, weights, meshes,
+  │                                        splat maps, scattered props        [M1 ✓ M2 ✓]
   └─ Stage 3  Regional objects         -> PlacementRecord per object           [M4]
 ```
 
@@ -38,6 +40,9 @@ terrain/heightmap_16bit.png Unreal landscape import path (M5)
 terrain/terrain.obj         triangle mesh
 terrain/preview_hillshade.png
 terrain/region_instances.json  per-patch area/height/slope — stage 3 picks from here
+terrain/splat/splat_0.png   RGBA blend weights; also the Unreal layer-weight format
+terrain/splat.json          which channel is which region
+terrain/scatter.json        placed props + per-prop contact ratio, gap, penetration
 blender/cameras.json        K and E per view: stage 3 back-projects through these
 blender/render_*.png        overview, oblique, and an eye-height view on the rim
 manifest.json               per-stage input fingerprints, outputs and timings
@@ -54,6 +59,38 @@ worldclaw blender --run canyon-01 --render --save-blend
 Two fixed test prompts, per the acceptance criteria — one flat, one with strong
 relief, because placement errors show up on a slope and never on the flat:
 `specs/desert.json` and `specs/canyon.json`.
+
+## Materials and scattering (M2)
+
+**The weights become a splat map.** ``m_tilde_r`` is packed four regions to an
+RGBA PNG. A Blender shader needs the weights as an image and Unreal needs them
+as landscape layer weights; both read the identical file. The shader mixes base
+colour and roughness per channel and then lays a slope-driven rock layer over the
+top, so steep ground shows rock whatever the region says. The material is purely
+procedural, so glTF carries geometry and UVs but not this material — M5 rebuilds
+an equivalent landscape material from the same splat map.
+
+**Scattering, and why the contact test lives here.** Candidates are drawn by
+affinity (the soft weights) at the spec's target density, filtered by slope and
+height, thinned to a minimum spacing, then given a scale, a yaw and an axis
+blended between world up and the surface normal.
+
+M2's acceptance criterion ("props without floating or interpenetration") and the
+paper's contact-rate metric are the same measurement, so it is implemented once,
+against the terrain, and M4 reuses it for reconstructed meshes. Two details it
+took a wrong answer to find:
+
+* Contact is measured against the prop's **base plane**, which is perpendicular
+  to its blended axis — not against a horizontal slab. A prop tilted onto a
+  slope has a tilted base; scoring it horizontally invents interpenetration and
+  dragged the canyon contact rate down to 84%. Measuring the real plane puts it
+  at 99.7%.
+* The base is anchored low in the footprint's height distribution and sunk by a
+  fraction of the local relief. Sitting a prop at its centre height leaves it
+  floating on the downhill side of any slope.
+
+Reported per prop and aggregated: contact ratio, largest gap, largest
+penetration. Gap and penetration are separate because they need opposite fixes.
 
 ## The height field
 
@@ -146,14 +183,15 @@ dashboard. The paper evaluates purely qualitatively; these are ours.
 Implemented: region coverage (an unpainted region is otherwise silent — this
 caught a layout generator that dropped two regions while the pipeline reported
 success), partition of unity, finite height field, slope plausibility, 16-bit
-round-trip, byte-level reproducibility from the seed, per-stage timing.
+round-trip, byte-level reproducibility from the seed, splat partition after 8-bit
+quantisation, scatter contact rate, per-stage timing.
 
-Reported as `skipped` with the milestone that will implement them: contact rate,
-scale plausibility, topography fidelity of the image edit, cost per scene. They
+Reported as `skipped` with the milestone that will implement them: scale
+plausibility, topography fidelity of the image edit, cost per scene. They
 are listed rather than omitted so the report always shows the full criterion set.
 
 ```bash
-python -m pytest          # 29 tests, ~1 s
+python -m pytest          # 45 tests, ~2 s
 ```
 
 ## What the official material adds
@@ -197,9 +235,6 @@ this environment's network) or remain our own choices.
 
 ## Next
 
-- **M2** — procedural PBR node graphs per region, blended along `m̃_r`; scatter
-  sampling filtered by height, slope and normal. The weights and the surface
-  normals both already exist and are tested.
 - **M3** — intent analysis (extracts only what the prompt states) and planning
   (fills the gaps), then the layout map from an image model. `SceneSpec` records
   which fields the planner inferred, so user intent stays distinguishable from

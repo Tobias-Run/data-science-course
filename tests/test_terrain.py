@@ -14,6 +14,7 @@ from worldclaw.layout import masks as masks_mod
 from worldclaw.rng import derive_seed, rng
 from worldclaw.schemas import (
     DuneOperator,
+    ScatterSpec,
     ErosionOperator,
     NoiseComponent,
     PeakOperator,
@@ -387,6 +388,122 @@ def test_heightmap_png16_roundtrip(tmp_path, spec, layout):
 # ---------------------------------------------------------------- layouts
 
 
+# ---------------------------------------------------------------- surface
+
+
+def test_splat_maps_pack_channels_and_partition(spec, layout):
+    from worldclaw.terrain.splat import pack_splat_maps
+
+    rm = masks_mod.extract_masks(spec, layout)
+    maps = pack_splat_maps(rm.weights, rm.names)
+    assert len(maps) == 1  # two regions fit one RGBA image
+    assert maps[0]["channels"] == {"R": "low", "G": "high"}
+    rgba = maps[0]["rgba"]
+    assert np.allclose(rgba[..., :2].sum(-1), 1.0, atol=1e-5)
+    assert np.allclose(rgba[..., 2:], 0.0)
+
+
+def test_splat_maps_split_beyond_four_regions():
+    from worldclaw.terrain.splat import pack_splat_maps
+
+    weights = np.zeros((6, 4, 4), dtype=np.float32)
+    weights[0] = 1.0
+    maps = pack_splat_maps(weights, [f"r{i}" for i in range(6)])
+    assert [m["index"] for m in maps] == [0, 1]
+    assert list(maps[1]["channels"]) == ["R", "G"]
+
+
+def _flat_scene(slope_deg: float = 0.0, res: int = 128):
+    """A terrain tilted by a known angle -- contact is analytic on it."""
+    spec = TerrainSpec(
+        name="ramp", seed=1, resolution=res, world_size_m=128.0, height_scale_m=1.0,
+        regions=[RegionSpec(name="a", color="#000000", base_height=0.0)],
+    )
+    xs = np.arange(res, dtype=np.float32) * spec.cell_size_m
+    height = np.tile(xs * np.tan(np.deg2rad(slope_deg)), (res, 1))
+    return spec, hf_mod.Heightfield(height_m=height, normalised=height, spec=spec)
+
+
+def test_contact_is_exact_on_flat_ground():
+    from worldclaw.terrain.scatter import contact_report
+
+    spec, hf = _flat_scene(0.0)
+    up = np.array([0.0, 0.0, 1.0])
+    contact, gap, pen = contact_report(
+        hf.height_m, spec.cell_size_m, 0.0, 0.0, 0.0, 1.0, 0.05, up
+    )
+    assert contact == pytest.approx(1.0)
+    assert gap == pytest.approx(0.0, abs=1e-6)
+    assert pen == pytest.approx(0.0, abs=1e-6)
+
+
+def test_contact_metric_credits_alignment_on_a_slope():
+    """A prop tilted onto the surface normal must score better than an upright one.
+
+    Measuring against a horizontal base plane regardless of the prop's actual
+    orientation reports interpenetration that does not exist -- which is what
+    dragged the canyon contact rate down to 84%.
+    """
+    from worldclaw.terrain.scatter import contact_report, resolve_base_height
+
+    spec, hf = _flat_scene(25.0)
+    slope_normal = hf.normals()[64, 64].astype(np.float64)
+    up = np.array([0.0, 0.0, 1.0])
+
+    scores = {}
+    for label, axis in (("upright", up), ("aligned", slope_normal)):
+        base = resolve_base_height(hf.height_m, spec.cell_size_m, 0.0, 0.0, 1.5, 0.0, axis)
+        scores[label] = contact_report(
+            hf.height_m, spec.cell_size_m, 0.0, 0.0, base, 1.5, 0.05, axis
+        )[0]
+    assert scores["aligned"] > scores["upright"]
+    assert scores["aligned"] == pytest.approx(1.0)
+
+
+def test_scatter_respects_slope_and_density():
+    from worldclaw.terrain.scatter import scatter_scene
+
+    spec, hf = _flat_scene(0.0, res=256)
+    spec.regions[0].scatter = [
+        ScatterSpec(asset_class="rock", density_per_km2=40000.0, min_spacing_m=2.0,
+                    footprint_radius_m=0.5)
+    ]
+    weights = np.ones((1, *hf.height_m.shape), dtype=np.float32)
+    inst = scatter_scene(spec, hf, weights)
+    assert len(inst) > 0
+    area_km2 = (spec.world_size_m**2) / 1e6
+    assert len(inst) <= round(40000.0 * area_km2) + 1
+    # Minimum spacing must actually hold.
+    p = np.array([i.position_m[:2] for i in inst])
+    d = np.hypot(*(p[:, None, :] - p[None, :, :]).T)
+    np.fill_diagonal(d, np.inf)
+    assert d.min() >= 2.0 - 1e-6
+    assert all(i.contact_ratio == pytest.approx(1.0) for i in inst)
+
+
+def test_scatter_rejects_ground_steeper_than_the_spec():
+    from worldclaw.terrain.scatter import scatter_scene
+
+    spec, hf = _flat_scene(35.0, res=192)
+    spec.regions[0].scatter = [
+        ScatterSpec(asset_class="shrub", density_per_km2=50000.0, max_slope_deg=20.0)
+    ]
+    weights = np.ones((1, *hf.height_m.shape), dtype=np.float32)
+    assert scatter_scene(spec, hf, weights) == []
+
+
+def test_scatter_is_seed_stable(spec, layout):
+    from worldclaw.terrain.scatter import scatter_scene
+
+    spec.regions[0].scatter = [ScatterSpec(asset_class="rock", density_per_km2=8000.0)]
+    rm = masks_mod.extract_masks(spec, layout)
+    hf = hf_mod.build_heightfield(spec, rm)
+    a = scatter_scene(spec, hf, rm.weights)
+    b = scatter_scene(spec, hf, rm.weights)
+    assert [i.position_m for i in a] == [i.position_m for i in b]
+    assert len(a) > 0
+
+
 @pytest.mark.parametrize("template", sorted(make_layout.TEMPLATES))
 def test_layout_templates_paint_every_region(template):
     """Every colour the template promises must actually appear.
@@ -401,6 +518,28 @@ def test_layout_templates_paint_every_region(template):
     assert len(used) >= 3
     for colour in used:
         assert (rgb == np.array(colour)).all(-1).mean() > 0.001
+
+
+@pytest.mark.parametrize("template", sorted(make_layout.TEMPLATES))
+@pytest.mark.parametrize("seed", [0, 3, 11, 42])
+def test_placed_blobs_never_touch_the_border(template, seed):
+    """The small inlaid regions must stay clear of the map edge.
+
+    A blob clipped by the border gets a dead-straight boundary that no hand
+    would paint, and it shows up in the render as a hard straight seam across a
+    landform.  The outline reaches 1.5x the nominal radius, so the clearance
+    check has to use that, not the nominal value.
+    """
+    from worldclaw.layout.palette import PALETTE
+
+    rgb = make_layout.generate(template, 192, seed, PALETTE)
+    inlaid = np.array(
+        [int(PALETTE["rock"].lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)], dtype=np.uint8
+    )
+    mask = (rgb == inlaid).all(-1)
+    assert mask.any(), "the inlaid region must be painted at all"
+    assert not mask[0, :].any() and not mask[-1, :].any()
+    assert not mask[:, 0].any() and not mask[:, -1].any()
 
 
 def test_layout_generation_is_seed_stable():

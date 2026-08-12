@@ -28,6 +28,12 @@ def _blob_field(size: int, gen: np.random.Generator, scale: int = 6) -> np.ndarr
     return (f - f.min()) / max(float(np.ptp(f)), 1e-6)
 
 
+# Blob outline radius = radius_frac * (_BLOB_BASE + _BLOB_AMPL * wobble),
+# wobble in [0, 1]. Named so the clearance check cannot drift from the outline.
+_BLOB_BASE = 0.5
+_BLOB_AMPL = 1.0
+
+
 def _placed_blob(
     size: int,
     gen: np.random.Generator,
@@ -50,13 +56,24 @@ def _placed_blob(
     yy = np.linspace(0.0, 1.0, size, dtype=np.float32)[:, None]
     xx = np.linspace(0.0, 1.0, size, dtype=np.float32)[None, :]
     out = np.zeros((size, size), dtype=bool)
-    margin = radius_frac * 1.8
+
+    # The outline reaches radius_frac * (BASE + AMPL), not radius_frac: clearing
+    # only the nominal radius lets the blob run off the map and be cut into the
+    # dead-straight edge this function exists to avoid.
+    max_radius_frac = radius_frac * (_BLOB_BASE + _BLOB_AMPL)
+    margin = max_radius_frac
 
     centres: np.ndarray | None = None
     if where is not None and where.any():
         from scipy import ndimage
 
-        room = ndimage.distance_transform_edt(where) >= radius_frac * size
+        # Pad with background first: distance_transform_edt measures distance to
+        # the nearest zero *inside* the array, so a region running to the map
+        # edge reports plenty of room right up against it -- and the blob then
+        # spills over and is cut straight.
+        padded = np.pad(where, 1, constant_values=False)
+        dist = ndimage.distance_transform_edt(padded)[1:-1, 1:-1]
+        room = dist >= max_radius_frac * size
         centres = np.argwhere(room if room.any() else where)
 
     for i in range(count):
@@ -68,7 +85,7 @@ def _placed_blob(
             cx = float(gen.uniform(margin, 1.0 - margin))
         wobble = _blob_field(size, gen, scale=11)
         d = np.sqrt((yy - cy) ** 2 + (xx - cx) ** 2) / radius_frac
-        out |= d < (0.5 + 1.0 * wobble)
+        out |= d < (_BLOB_BASE + _BLOB_AMPL * wobble)
     return out
 
 
