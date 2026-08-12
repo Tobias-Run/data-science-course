@@ -77,6 +77,69 @@ _BASE_NOISE = {
 
 _RIDGED = {"slope", "rock", "peak"}
 
+# Pigment-like, deliberately not saturated: these tint a category's base colour
+# rather than replacing it, so "red rock" reads as red sandstone and not as a
+# neon surface.
+_COLOR_HINTS = {
+    "red": (0.55, 0.14, 0.09),
+    "orange": (0.70, 0.33, 0.10),
+    "ochre": (0.65, 0.45, 0.16),
+    "yellow": (0.78, 0.66, 0.20),
+    "brown": (0.40, 0.26, 0.16),
+    "grey": (0.42, 0.42, 0.42),
+    "white": (0.85, 0.85, 0.83),
+    "black": (0.10, 0.10, 0.11),
+    "green": (0.20, 0.40, 0.16),
+    "blue": (0.16, 0.30, 0.55),
+    "teal": (0.13, 0.42, 0.40),
+    "purple": (0.35, 0.20, 0.45),
+    "pink": (0.72, 0.45, 0.48),
+}
+
+
+def _luma(c) -> float:
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+
+def _apply_color_hint(base, hint: str | None, strength: float = 0.7):
+    """Tint a category's base colour towards the planner's stated colour.
+
+    Luminance is renormalised back to the category's own, so a hint changes the
+    *hue* while the category keeps deciding how light or dark the ground is --
+    rock stays rock-dark whether it is grey or red. Replacing the colour
+    outright would let a hint quietly override the material's brightness too.
+
+    Without this the planner has no way at all to express colour: the material
+    comes from a fixed category table, so "red sandstone" arrives as category
+    'rock' and renders neutral grey. That is exactly what made a whole scene
+    look like snow.
+    """
+    if not hint:
+        return tuple(base)
+    target = _COLOR_HINTS.get(hint)
+    if target is None:
+        return tuple(base)
+
+    mixed = tuple(b * (1.0 - strength) + t * strength for b, t in zip(base, target))
+
+    # Achromatic hints are *about* lightness -- "chalk cliffs" means pale, "basalt"
+    # means dark. Renormalising their luminance back to the category's would
+    # cancel exactly the thing being asked for, so they are left alone.
+    if max(target) - min(target) < 0.06:
+        return mixed
+
+    lb, lm = _luma(base), _luma(mixed)
+    if lm <= 1e-6:
+        return mixed
+    # Cap the correction so no channel clips: clipping would bend the hue away
+    # from the requested colour, which is worse than landing slightly off the
+    # category's brightness.
+    peak = max(mixed)
+    k = lb / lm
+    if peak > 1e-6:
+        k = min(k, 1.0 / peak)
+    return tuple(c * k for c in mixed)
+
 _DEFAULT_SCATTER = {
     "boulder": dict(density_per_km2=900.0, max_slope_deg=24.0, footprint_radius_m=1.1,
                     min_spacing_m=6.0, scale_range=(0.7, 1.6)),
@@ -180,6 +243,7 @@ def expand(plan: ScenePlan, seed: int = 0, resolution: int = 768) -> TerrainSpec
         used_colors.add(color)
 
         base_rgb, roughness = _MATERIAL.get(rp.category, ((0.5, 0.5, 0.5), 0.9))
+        base_rgb = _apply_color_hint(base_rgb, rp.color_hint)
         regions.append(
             RegionSpec(
                 name=_slugify(rp.name, fallback=rp.category, max_len=40).replace("-", "_"),

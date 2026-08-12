@@ -28,6 +28,14 @@ Character = Literal[
     "smooth", "rolling", "rugged", "terraced", "eroded", "peaked", "dunes", "flat"
 ]
 
+# A closed vocabulary rather than free text or a hex code: schema-constrained
+# decoding then guarantees a value expand.py can resolve, and small local models
+# are unreliable at inventing hex but perfectly reliable at picking a word.
+ColorHint = Literal[
+    "red", "orange", "ochre", "yellow", "brown", "grey", "white", "black",
+    "green", "blue", "teal", "purple", "pink",
+]
+
 Composition = Literal[
     "channel",  # a valley or river cutting across the map
     "bands",  # parallel strips, e.g. coast -> plain -> mountains
@@ -50,6 +58,11 @@ class RegionPlan(Base):
     )
     character: list[Character] = Field(
         default_factory=list, max_length=3, description="landform character, not parameters"
+    )
+    color_hint: ColorHint | None = Field(
+        default=None,
+        description="the region's dominant colour, when the prompt implies one "
+        "(e.g. red sandstone -> red). Leave null to use the category's default.",
     )
     scatter: list[str] = Field(
         default_factory=list,

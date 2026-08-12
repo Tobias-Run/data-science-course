@@ -113,6 +113,16 @@ the viewpoint) and both are pinned by tests. If it recurs, check
 **Renders are slow.** Cycles runs on **CPU on purpose**: the GPU belongs to the
 generator models. Lower `--samples`, or `--decimate 2` to halve the mesh.
 
+**The render looks white / colourless, but brightness is normal.**
+Check `blender_summary.json > diagnostics > render_stats`. A mean of roughly
+120-200 out of 255 means the render is *not* overexposed -- the terrain simply
+has no colour to show. That happens when the planner assigns the same category
+to several regions (two `rock` regions both get the category's grey) and sets no
+`color_hint`. The hint is the only path from the prompt's colour words to the
+material: "red sandstone" without it arrives as category `rock` and renders
+neutral grey. If a model consistently leaves it null, a larger one usually
+fixes it; `plan/scene_plan.json` shows what it chose.
+
 **`scatter_contact` fails.** Props are floating or buried. Usually a scatter
 spec with a footprint too large for the local relief — lower
 `footprint_radius_m` or raise `embed`.

@@ -46,6 +46,12 @@ Rules:
   and the highest near 1.0, so the scene actually uses its relief.
 - relative_area values should roughly sum to 1.
 - character describes landform shape, not parameters. Pick at most 3 words.
+- color_hint is how the ground actually looks. Set it whenever the prompt
+  implies a colour, explicitly ("red sandstone" -> red) or through a material
+  everyone pictures ("basalt" -> black, "chalk cliffs" -> white). This is the
+  ONLY way colour from the prompt reaches the render: the terrain material is
+  otherwise chosen from the category alone, so an unset hint on "red sandstone"
+  produces grey rock. Leave it null only when no colour is implied.
 - relief_m is the height difference between the lowest and highest ground.
   A dune field is 40-120 m. A canyon or mountain scene is 300-800 m.
 - scatter lists small props strewn over a region, never buildings.

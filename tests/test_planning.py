@@ -261,3 +261,82 @@ def test_procedural_backend_matches_planned_region_colours(plan, tmp_path):
     used = {tuple(c) for c in np.unique(rgb.reshape(-1, 3), axis=0)}
     assert used <= {r.rgb for r in spec.regions}
     assert report.unmatched_fraction == pytest.approx(0.0)
+
+
+# ------------------------------------------------------------- colour hints
+
+
+def test_colour_hint_tints_the_material_and_keeps_category_brightness():
+    """A stated colour must actually reach the render.
+
+    Without this the material comes from the category table alone, so "red
+    sandstone" arrives as category 'rock' and renders neutral grey -- which is
+    what made a real user's whole canyon look like snow while every brightness
+    diagnostic reported healthy.
+    """
+    from worldclaw.planning.expand import _MATERIAL, _apply_color_hint, _luma
+
+    base = _MATERIAL["rock"][0]
+    red = _apply_color_hint(base, "red")
+
+    assert red[0] > red[1] and red[0] > red[2]          # actually red
+    assert (max(red) - min(red)) / max(red) > 0.4       # actually saturated
+    assert _luma(red) == pytest.approx(_luma(base), rel=0.02)  # rock stays rock-dark
+
+
+def test_achromatic_hints_change_lightness_rather_than_hue():
+    """'chalk cliffs' means pale and 'basalt' means dark.
+
+    Renormalising these back to the category's luminance -- correct for a hue
+    hint -- would cancel exactly what was asked for.
+    """
+    from worldclaw.planning.expand import _MATERIAL, _apply_color_hint, _luma
+
+    base = _MATERIAL["rock"][0]
+    assert _luma(_apply_color_hint(base, "white")) > _luma(base) * 1.5
+    assert _luma(_apply_color_hint(base, "black")) < _luma(base) * 0.6
+
+
+@pytest.mark.parametrize("category", ["rock", "sand", "dune", "plain", "peak"])
+@pytest.mark.parametrize("hint", ["red", "orange", "ochre", "green", "blue", "white", "black"])
+def test_colour_hints_never_clip_a_channel(category, hint):
+    """A clipped channel bends the hue away from the colour that was asked for."""
+    from worldclaw.planning.expand import _MATERIAL, _apply_color_hint
+
+    out = _apply_color_hint(_MATERIAL[category][0], hint)
+    assert all(0.0 <= c <= 1.0 for c in out), out
+
+
+def test_no_hint_leaves_the_category_colour_untouched():
+    from worldclaw.planning.expand import _MATERIAL, _apply_color_hint
+
+    base = _MATERIAL["sand"][0]
+    assert _apply_color_hint(base, None) == pytest.approx(base)
+    assert _apply_color_hint(base, "chartreuse") == pytest.approx(base)  # unknown word
+
+
+def test_colour_hint_survives_the_full_expansion(plan):
+    """The hint has to arrive in the TerrainSpec's material, not just in the plan."""
+    plan.regions[3].color_hint = "red"          # the massif
+    spec = expand(plan)
+    massif = next(r for r in spec.regions if r.name == "massif")
+    c = massif.material.base_color
+    assert c[0] > c[1] and c[0] > c[2]
+
+
+def test_two_regions_of_one_category_can_differ_by_colour():
+    """The layout-map colours were already separated for duplicate categories;
+    the *materials* were not, so both rendered identically."""
+    p = ScenePlan(
+        name="t", biome="b", world_size_m=1024.0, relief_m=200.0,
+        regions=[
+            RegionPlan(name="red walls", category="rock", relative_area=0.5,
+                       elevation=0.8, color_hint="red"),
+            RegionPlan(name="grey scree", category="rock", relative_area=0.5,
+                       elevation=0.2, color_hint="grey"),
+        ],
+        layout=LayoutPlan(composition="bands", image_prompt="x"),
+    )
+    spec = expand(p)
+    a, b = (r.material.base_color for r in spec.regions)
+    assert a != pytest.approx(b)
