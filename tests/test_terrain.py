@@ -574,3 +574,37 @@ def test_palette_colours_survive_quantisation():
     from worldclaw.layout.palette import min_separation
 
     assert min_separation() > 40.0
+
+
+def test_rim_viewpoint_ignores_the_tile_edge():
+    """The eye-height camera must stand at a landform, not at the map border.
+
+    Region weights leave a hard step where the tile ends, and that step is
+    usually the largest height difference in the scene. Without excluding it the
+    search lands in a map corner and the camera looks out of the world at the
+    horizon plane -- a real run produced exactly that: a frame filled with a
+    featureless gradient and a sliver of sky.
+    """
+    from worldclaw.blender.build_terrain import rim_viewpoint
+
+    res, cell = 384, 4.0
+    h = np.zeros((res, res), dtype=np.float32)
+    h[:, 150:210] = 275.0          # the real landform, mid-map
+    h[:, :20] = 275.0              # tile-edge artefacts, taller in extent
+    h[:, -20:] = 275.0
+
+    (rx, ry), _ = rim_viewpoint(h, cell)
+    half = (res - 1) / 2 * cell
+    assert min(half - abs(rx), half - abs(ry)) > 0.03 * res * cell, "stood on the tile edge"
+    # Columns 150-210 map to roughly x = -160 .. +80 in world coordinates.
+    assert -220.0 < rx < 140.0, f"did not find the real landform, got x={rx}"
+
+
+def test_rim_viewpoint_still_works_on_a_small_raster():
+    """The margin must not consume a raster too small to spare one."""
+    from worldclaw.blender.build_terrain import rim_viewpoint
+
+    h = np.zeros((24, 24), dtype=np.float32)
+    h[:, 12:] = 50.0
+    (rx, ry), (lx, ly) = rim_viewpoint(h, 4.0)
+    assert all(np.isfinite(v) for v in (rx, ry, lx, ly))

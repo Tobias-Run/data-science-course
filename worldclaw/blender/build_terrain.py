@@ -228,6 +228,18 @@ def rim_viewpoint(
     upper = height_m >= (lo + 0.75 * relief)
     score = np.where(upper, relief, 0.0)
 
+    # Exclude a margin at the raster border. Region weights leave a hard step
+    # where the tile simply ends, and that step is usually the largest height
+    # difference in the whole scene -- so the search lands in a map corner and
+    # the camera looks out of the world at the horizon plane, filling the frame
+    # with a featureless gradient. A tile edge is an artefact of the world being
+    # finite, not a landform worth standing on.
+    margin = max(k, int(round(0.06 * min(height_m.shape))))
+    if min(height_m.shape) > 2 * margin + 4:
+        interior = np.zeros_like(score, dtype=bool)
+        interior[margin:-margin, margin:-margin] = True
+        score = np.where(interior, score, 0.0)
+
     row, col = np.unravel_index(int(np.argmax(score)), score.shape)
     half = k // 2
     r0, r1 = max(row - half, 0), min(row + half + 1, height_m.shape[0])
