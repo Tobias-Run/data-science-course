@@ -49,7 +49,14 @@ class RegionPlan(Base):
     """One planned terrain region."""
 
     name: str = Field(description="short human name, e.g. 'canyon floor'")
-    category: TerrainCategory
+    category: TerrainCategory = Field(
+        description="what the ground IS, which sets its landform and roughness. "
+        "water=open water, basin=low bare floor, plain=GRASSLAND (green), "
+        "sand=flat sandy ground, dune=wind-blown dunes, slope=talus/scree flank, "
+        "forest=wooded, plateau=high flat tableland, rock=bare rock, peak=summit. "
+        "Match it to the biome: an arid scene uses sand/dune/slope/plateau/rock, "
+        "not plain or forest."
+    )
     relative_area: float = Field(
         ge=0.01, le=1.0, description="share of the map, roughly; normalised later"
     )
@@ -61,8 +68,11 @@ class RegionPlan(Base):
     )
     color_hint: ColorHint | None = Field(
         default=None,
-        description="the region's dominant colour, when the prompt implies one "
-        "(e.g. red sandstone -> red). Leave null to use the category's default.",
+        description="the colour this ground actually is. Set it for EVERY region, "
+        "reasoning from the biome: an arid canyon rim is ochre or brown, never "
+        "green. Null falls back to the category's own colour, which assumes a "
+        "temperate biome -- so 'plain' would render as grass green even in a "
+        "desert. Only leave it null if the category's own colour is already right.",
     )
     scatter: list[str] = Field(
         default_factory=list,

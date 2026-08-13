@@ -340,3 +340,54 @@ def test_two_regions_of_one_category_can_differ_by_colour():
     spec = expand(p)
     a, b = (r.material.base_color for r in spec.regions)
     assert a != pytest.approx(b)
+
+
+def test_category_and_colour_guidance_reach_the_model_schema():
+    """The model only sees the JSON schema and the system prompt.
+
+    Guidance that lives in a Python comment cannot influence a plan. A real run
+    picked category 'plain' for a desert floor -- which renders grass green --
+    because nothing in the schema said 'plain' means grassland.
+    """
+    schema = inline_refs(ScenePlan.model_json_schema())
+    props = schema["properties"]["regions"]["items"]["properties"]
+
+    category_doc = props["category"]["description"].lower()
+    assert "grassland" in category_doc
+    assert "arid" in category_doc
+
+    # An optional field carries its description at the property level, beside
+    # the anyOf, not inside one of its branches.
+    hint = props["color_hint"]
+    hint_doc = hint.get("description") or next(
+        (v["description"] for v in hint.get("anyOf", []) if v.get("description")), ""
+    )
+    assert "every region" in hint_doc.lower()
+    assert any("enum" in v for v in hint.get("anyOf", [])), "hint must stay a closed vocabulary"
+
+
+def test_planner_prompt_warns_about_the_green_desert():
+    assert "GRASSLAND" in agent.PLAN_SYSTEM
+    assert "green desert" in agent.PLAN_SYSTEM
+
+
+def test_a_desert_plan_using_plain_still_renders_arid_when_hinted():
+    """The hint has to be able to rescue a category that fits the biome badly.
+
+    A local model reached for 'plain' on a desert floor; the hint is what keeps
+    that from becoming a green desert.
+    """
+    p = ScenePlan(
+        name="t", biome="arid desert", world_size_m=1024.0, relief_m=300.0,
+        regions=[
+            RegionPlan(name="rim", category="plain", relative_area=0.5,
+                       elevation=0.8, color_hint="ochre"),
+            RegionPlan(name="wall", category="rock", relative_area=0.5,
+                       elevation=0.2, color_hint="red"),
+        ],
+        layout=LayoutPlan(composition="channel", image_prompt="x"),
+    )
+    spec = expand(p)
+    for r in spec.regions:
+        c = r.material.base_color
+        assert c[0] > c[1], f"{r.name} still reads green: {c}"
